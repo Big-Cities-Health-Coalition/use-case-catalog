@@ -80,7 +80,7 @@ export const SITE = {
     "intro": "Share a digital tool, data project or AI use case with the coalition. Code is optional: a clear description of what you built and what it took is enough. Nothing is published until it is approved.",
     "turnaround": "Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share.",
     "review_note": "Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content.",
-    "fallback_email": "info@bigcitieshealth.org"
+    "fallback_email": false
   },
   "catalog": {
     "verify_after_days": 365
