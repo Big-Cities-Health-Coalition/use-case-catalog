@@ -1429,7 +1429,7 @@ export const SCHEMA = {
       "description": "Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only."
     },
     {
-      "key": "body",
+      "key": "write_up",
       "label": "Full write-up",
       "prompt": "What's the story?",
       "type": "markdown",
