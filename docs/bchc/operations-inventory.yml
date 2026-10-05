@@ -60,7 +60,8 @@ settings:
     - "Analyze ruby"
     - "scale"
     - "lint"
-  required_checks_strict_up_to_date: true
+    - "Content: entries and site build"
+  required_checks_strict_up_to_date: false   # off since 2026-10-05: entries live in separate folders, and "Update branch" was the hardest step for a non-technical reviewer
   conversation_resolution_required: true
   force_push_blocked: true
   deletion_blocked: true
