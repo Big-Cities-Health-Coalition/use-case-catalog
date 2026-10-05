@@ -82,12 +82,16 @@ export const VARIANTS = [
   {
     id: 'legacy-font-names',
     preset: null,
-    modules: null,
+    // `status: null` deletes the key: a site.yml written before the status
+    // module existed, which must still build /status/ and link to it.
+    modules: { status: null },
     themeFonts: { heading: 'Source Serif 4', body: 'Source Sans 3' },
     entries: 'none',
     build: true,
     expectFrontMatter: 'pass',
-    why: 'a protected pre-rename theme file must load the current derivative font binaries',
+    why:
+      'a protected pre-rename theme file must load the current derivative font binaries; ' +
+      'its site.yml also predates the status module, which must build anyway',
   },
   {
     id: 'legacy-issue-chooser',
@@ -135,11 +139,13 @@ export const VARIANTS = [
   {
     id: 'shipped-empty',
     preset: null,
-    modules: null,
+    modules: { status: false },
     entries: 'none',
     build: true,
     expectFrontMatter: 'pass',
-    why: 'the shipped configuration with nothing published yet: the governance page carries figures but no feed to link to',
+    why:
+      'the shipped configuration with nothing published yet: the governance page carries figures but no feed to link to; ' +
+      'the status module is off, so /status/ must not be built or linked',
   },
   {
     // The wizard's sample-removal step is documented as the thing that keeps a
@@ -164,10 +170,17 @@ function timedRun(command, args, options) {
   return { ...result, duration_ms: Math.round(performance.now() - started) };
 }
 
-/** Turn on/off modules in a scratch `_data/site.yml`. Comments are not preserved. */
+/**
+ * Turn on/off modules in a scratch `_data/site.yml`; a `null` module value deletes
+ * the key, as in a site.yml written before that module existed. Comments are not
+ * preserved.
+ */
 function patchSite(file, { modules, demo, githubBranch, demoMessage }) {
   const site = readYaml(file);
-  if (modules) site.modules = { ...(site.modules ?? {}), ...modules };
+  if (modules) {
+    site.modules = { ...(site.modules ?? {}), ...modules };
+    for (const [key, value] of Object.entries(modules)) if (value === null) delete site.modules[key];
+  }
   if (typeof demo === 'boolean') site.demo = demo;
   if (githubBranch) site.github = { ...(site.github ?? {}), branch: githubBranch };
   if (demoMessage) site.demo_message = demoMessage;

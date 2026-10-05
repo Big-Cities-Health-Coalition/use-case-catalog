@@ -360,6 +360,20 @@ export function keepsLandingLink(url) {
 }
 
 /**
+ * Every module switched off, including one the site's `modules:` block does
+ * not name: a module with no key is on (`_plugins/modules.rb`), so a
+ * `site.yml` written before a module existed would keep linking to its page.
+ *
+ * @param {Record<string, unknown> | undefined} siteModules the site's `modules:` block.
+ * @param {string[]} known every module `_data/modules.yml` declares.
+ * @returns {Record<string, false>}
+ */
+export function landingModules(siteModules, known) {
+  const keys = new Set([...Object.keys(siteModules ?? {}), ...known]);
+  return Object.fromEntries([...keys].map((key) => [key, false]));
+}
+
+/**
  * Point the shipped header and footer at the pages the landing has. Both read
  * `_data`, so this is a data edit on the scratch tree rather than a template
  * branch: the catalog, submit and governance pages are not in this build, and a
@@ -384,7 +398,10 @@ function landingChrome(dir) {
 
   const siteFile = path.join(dir, '_data', 'site.yml');
   const site = readYaml(siteFile);
-  for (const key of Object.keys(site.modules ?? {})) site.modules[key] = false;
+  site.modules = landingModules(
+    site.modules,
+    Object.keys(readYaml(path.join(dir, '_data', 'modules.yml')) ?? {})
+  );
   const links = site.footer?.links;
   if (Array.isArray(links)) site.footer.links = links.filter((link) => keepsLandingLink(link?.url));
 

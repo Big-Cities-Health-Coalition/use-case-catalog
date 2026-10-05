@@ -1,0 +1,43 @@
+<!-- Snapshot of the rendered /status/ page: `bundle exec jekyll build`, then the
+     <main> content of _site/status/index.html up to (not including) its module
+     <script>. Regenerate it when the markup in status/index.md changes, so
+     test/scripts/status_page.test.mjs tests the real DOM; the build matrix
+     (test/build/variants.test.mjs) fails when the data-status-* hooks drift. -->
+<section class="max-w-prose">
+  <span class="eyebrow">Contribute</span>
+  <h1 class="page-title mt-2">Check your submission</h1>
+  <p class="mt-4 text-lg text-brand-muted">Already sent us something? Enter its number to see where it is in the review.</p>
+</section>
+<noscript>
+  <div class="mt-8 max-w-xl rounded-lg border border-brand-line bg-surface-base p-4 text-sm text-brand-ink">
+    <p class="font-semibold">JavaScript is off, so this page cannot look a number up for you.</p>
+    <p class="mt-2 text-brand-muted">Your submission is on GitHub at <span class="break-all font-mono text-xs">github.com/crypticpy/phct/issues/</span> followed by its number. Or <a class="font-semibold text-brand-primary underline underline-offset-2 hover:no-underline" href="https://github.com/crypticpy/phct/issues?q=is%3Aissue%20author%3A%40me">see every submission you have made</a>, after signing in to GitHub.</p>
+  </div>
+</noscript>
+
+<div class="mt-8 max-w-xl" data-status-app="" data-repo="crypticpy/phct">
+  <form class="card p-6" action="/status/" method="get" data-status-form="">
+    <div class="field">
+      <label class="field-label" for="status-number">Submission number</label>
+      <p class="field-help" id="status-number-hint">GitHub gave your submission a number when you sent it, like #42. It is in the title of your submission on GitHub and in every email GitHub sends you about it.</p>
+      <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-start">
+        <input class="field-input sm:max-w-[12rem]" id="status-number" name="n" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="status-number-hint" data-status-input="" />
+        <button type="submit" class="btn-primary shrink-0">Check status</button>
+      </div>
+      <p class="field-error" id="status-number-error" data-status-error="" hidden=""><svg class="shrink-0 h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+<span data-status-error-text=""></span></p>
+    </div>
+  </form>
+  <p class="sr-only" role="status" aria-live="polite" data-status-live=""></p>
+  <div class="mt-6" data-status-result="" hidden=""></div>
+
+  <p class="mt-6 text-sm text-brand-muted">Lost the number? <a class="font-medium text-brand-primary underline-offset-2 hover:underline" href="https://github.com/crypticpy/phct/issues?q=is%3Aissue%20author%3A%40me">See every submission you have made on GitHub</a>. You will need to be signed in.</p>
+  <template data-status-step=""><li class="progress-step status-step" data-state="upcoming"><span class="progress-dot" aria-hidden="true"><span class="progress-num" data-step-num=""></span><svg class="shrink-0 h-3 w-3 progress-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+</span><span class="pt-0.5"><span class="sr-only" data-step-state=""></span><span data-step-label=""></span></span></li></template>
+  <template data-status-stage="received" data-label="Received">Your submission is in the queue. A maintainer will turn it into a draft page and send it for review. Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share.</template>
+  <template data-status-stage="in-review" data-label="In review">A draft page is ready and the reviewers are reading it. You don't need to do anything now. If they have a question, GitHub will email you.</template>
+  <template data-status-stage="changes-requested" data-label="Changes requested">The reviewers have a question or a change for you. Open your submission on GitHub to read their comment, then reply there.</template>
+  <template data-status-stage="published" data-label="Published">Your submission is live on the site. Thank you for sharing it.</template>
+  <template data-status-stage="declined" data-label="Not published">This submission won't be published. The last comment on GitHub explains why, and you can reply there if you have questions.</template>
+  <template data-status-stage="closed" data-label="Closed">This submission is closed. The last comment on GitHub says what happened.</template>
+</div>

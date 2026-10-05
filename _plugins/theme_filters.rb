@@ -99,6 +99,27 @@ module CatalogTemplate
       ERB::Util.url_encode(value.to_s)
     end
 
+    # Query parameters GitHub's new-issue page reads itself, so an issue-form
+    # element with one of these ids never receives its prefilled answer. The
+    # list and the prefix are assets/js/configurator/issue-form-ids.js's, which
+    # the generator and the /submit/ page's script use;
+    # test/plugins/theme_filters_test.rb keeps the two equal.
+    ISSUE_FORM_RESERVED_PARAMS = %w[title body labels assignees milestone projects template].freeze
+    ISSUE_FORM_ID_PREFIX = "entry_"
+
+    # The issue-form element id (and prefill parameter) for a schema field key:
+    # the key itself, or `entry_<key>` for a key GitHub claims. The /submit/
+    # form names its controls with it, so the no-script route (a plain GET to
+    # the issue form) prefills the same ids the generated form has.
+    # @param key [String] schema field key
+    # @return [String]
+    # @example
+    #   <textarea name="{{ f.key | issue_form_id }}">
+    def issue_form_id(key)
+      value = key.to_s
+      ISSUE_FORM_RESERVED_PARAMS.include?(value) ? "#{ISSUE_FORM_ID_PREFIX}#{value}" : value
+    end
+
     # True when `path` is a file Jekyll is copying into the site (a screenshot,
     # a deck, a generated thumbnail). Replaces `site.static_files | where:
     # 'path', x | size > 0`, which allocates and scans the whole static-file

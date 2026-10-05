@@ -1,0 +1,127 @@
+name: Submission status
+
+# Tells a submitter what happened to their entry, on their issue, as the review
+# moves along, and keeps the issue's `status:*` label in step (the /status/
+# page reads it). The submitter is subscribed to their issue, not to the draft
+# pull request, so this is how review news reaches their inbox.
+#
+# Every table row is for an entry draft (`content:new-entry`). The drafts the
+# other forms open (events, cohort years, schedules, attachments, refreshes,
+# "also deployed by", setup) carry their form's `content:*` label and get the
+# last three rows only: closed unmerged is a decline, merged is published.
+# Their issue must carry the same form label (or, failing any form label, a
+# status label), so a draft whose "Closes #N" names another form's issue
+# changes nothing.
+#
+#   On the entry's draft pull request          On its issue
+#   ---------------------------------------    -------------------------------------
+#   `review:revisions-requested` added, or a   comment: what to do;
+#   maintainer's review that requests changes  status:changes-requested
+#   `review:revisions-requested` removed       status:in-review (no comment)
+#   `review:committee` / `review:partner`      short comment, once; status:in-review
+#   `review:declined`, or closed unmerged      comment with the appeal route, once;
+#                                              status:declined; issue closed as not planned
+#   closed unmerged while another draft for    nothing: the issue's other draft carries on
+#   the same issue is open, no review:declined
+#   merged                                     status:published (pages.yml's announce
+#                                              job posts "now live" once it deploys)
+#
+# The status comes from the draft's labels as they are when the job runs, not
+# only from the event that started it: while `review:revisions-requested` is
+# on the draft the issue reads changes-requested, so swap it for the tier label
+# when the changes land (docs/admin-guide.md). The message text is
+# scripts/lib/notify.mjs, overridable under `notifications:` in _data/site.yml;
+# the rules are `stageDecision` there.
+#
+# Who counts: a review only from the repository's owner, an organization
+# member or a collaborator (`author_association`), checked here and again in
+# `stageDecision`, because anyone can review a pull request on a public
+# repository. Labelling and closing already need triage access; the job also
+# reads the sender's role and ignores a read-only one.
+#
+# Security: `pull_request`, not `pull_request_target`. Entry drafts are opened
+# from a branch of this repository, so `pull_request` runs here with a token
+# that can write issues; a pull request from a fork gets a read-only token and
+# is skipped outright. Under `pull_request_target` a fork's author could write
+# "Closes #N" into their own pull request, close it, and have this job close
+# and relabel any issue. The checkout is the default branch, named explicitly,
+# so code from a pull request is never run; nothing from the event reaches a
+# shell. Events caused by the automation's own GITHUB_TOKEN do not start
+# workflows at all, and labels, reviews and closes by people run without the
+# "Approve and run" gate (that gate only covers opened/synchronize/reopened).
+
+on:
+  pull_request:
+    types:
+      - labeled
+      - unlabeled
+      - closed
+  pull_request_review:
+    types:
+      - submitted
+
+permissions: {}
+
+jobs:
+  notify:
+    # Cheap filters first, so most label changes never start a runner. A
+    # close passes for any draft with a `content:*` label (every intake label
+    # in INTAKE_LABELS in scripts/lib/notify.mjs starts with it; stageDecision
+    # checks the exact list); label and review events only for an entry draft.
+    # The label list matches REVIEW_LABELS there, and the review authors
+    # MAINTAINER_ASSOCIATIONS (test/scripts/notify_workflows.test.mjs keeps
+    # them equal).
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && ((github.event.action == 'closed'
+           && contains(join(github.event.pull_request.labels.*.name, ' '), 'content:'))
+          || (contains(github.event.pull_request.labels.*.name, 'content:new-entry')
+              && ((github.event_name == 'pull_request'
+                   && contains(fromJSON('["review:revisions-requested","review:committee","review:partner","review:declined"]'), github.event.label.name))
+                  || (github.event_name == 'pull_request_review'
+                      && github.event.review.state == 'changes_requested'
+                      && (github.event.review.author_association == 'OWNER'
+                          || github.event.review.author_association == 'MEMBER'
+                          || github.event.review.author_association == 'COLLABORATOR')))))
+    # One run at a time per pull request, none cancelled: a label and a review
+    # arriving together are handled in turn, and the duplicate-comment check
+    # reads what the previous run posted. On the job, not the workflow, so a
+    # run this `if` skips (another label, an approving review) never takes a
+    # place in the queue. GitHub still keeps only the newest waiting run, so a
+    # burst can drop one; the run that does go reads the labels as they are
+    # then, and posts what the dropped one would have.
+    concurrency:
+      group: submission-status-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Update the submitter
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.handleStageEvent({ github, context, core });

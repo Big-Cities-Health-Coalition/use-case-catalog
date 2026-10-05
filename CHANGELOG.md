@@ -8,6 +8,120 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.2] — 2026-10-05
+
+Second candidate. rc.1's live BCHC update stopped before opening a pull request
+because the showcase landing assumed every module is named in `site.yml`.
+
+### Fixed
+
+- The showcase landing linked to `/status/` without building it when
+  `site.yml` predates the status module (no `modules.status` key), which
+  failed the deployment's build matrix. The landing now switches off every
+  module `_data/modules.yml` declares.
+
+## [1.11.0-rc.1] — 2026-10-05
+
+**Upgrading a deployment.** Run **Bootstrap labels** once after updating: it
+adds the five `status:*` labels and `needs-triage` (the automation also creates
+them on first use). Nothing needs configuring; the optional `notifications:`
+block in `_data/site.yml` changes the wording. A schema field keyed `body`,
+`title`, `labels`, `assignees`, `milestone`, `projects` or `template` keeps its
+key everywhere (front matter, labels, the scaffolder); only its element id in
+the generated issue form changes, to `entry_<key>`, so regenerate and commit
+`.github/ISSUE_TEMPLATE/new-entry.yml` (the updater does this).
+
+### Added
+
+- A "Check your submission" page at `/status/` (new `status` module, on by
+  default). A submitter types the number GitHub gave their submission, or
+  follows a `/status/?n=<number>` link, and sees its title, the date it was
+  sent, a step indicator and what happens next. The stage comes from the
+  issue's `status:received`, `status:in-review`, `status:changes-requested`,
+  `status:published` or `status:declined` label, and from the open/closed
+  state when there is none. It reads GitHub's public API with no token; when
+  GitHub refuses, the network fails or JavaScript is off it offers a plain
+  link to the issue instead. Copy is in the new optional `status:` block of
+  `_data/site.yml`. A `site.yml` with no `modules.status` key builds the page
+  too; set it to `false` if your repository is private, since GitHub's API
+  cannot see private issues.
+- The submit page's "what happens next" and its confirmation panel now tell
+  people their submission gets a number, to keep it, that GitHub emails them
+  about it, and (when the status module is on) where to check on it. The
+  footer gains a *Check a submission* link.
+- Submitters hear what happens to their submission, on their own issue, which
+  GitHub emails to them. Every content form now acknowledges a new issue with
+  its number, what happens next, the turnaround and how updates arrive; the
+  submitter is mentioned once on the draft so they are subscribed to the
+  review; and a new **Submission status** workflow (`submission-status.yml`)
+  comments when a reviewer asks for changes, moves a submission to the
+  committee or a partner, or declines it (closing the issue as not planned,
+  with the appeal route). Only a review by the owner, an organization member
+  or a collaborator counts, and closing a draft while another for the same
+  issue is open (without `review:declined`) is not a decline. Drafts from the
+  other forms (events, cohort years, schedules, attachments, refreshes, "also
+  deployed by", setup) are covered when closed: unmerged is a decline, merged
+  is published; the Apply setup draft now carries `content:site-config` like
+  the rest. The deploy's "now live" comment is unchanged.
+- One status label on every submission issue: `status:received`,
+  `status:in-review`, `status:changes-requested`, `status:published`,
+  `status:declined`, for the `/status/` page.
+- An issue that no form claimed is answered too: an outsider's issue gets an
+  acknowledgement and `needs-triage`; a form submission whose label is missing
+  still gets the "label missing" instructions.
+- `notifications:` in `_data/site.yml`: turnaround, appeal line, reviewer
+  names, a logo and per-message overrides. All wording lives in one module,
+  `scripts/lib/notify.mjs`; comments carry a hidden marker so a re-run never
+  posts twice.
+
+### Fixed
+
+- An edit to a submission issue no longer erases a reviewer's work. The intake
+  workflows rebuilt and force-pushed the draft branch on every edit; now a
+  branch with any commit not made by the automation (or a merge from **Update
+  branch**) is left alone, the reviewer gets a comment on the draft listing
+  which answers changed, and the submitter is told their edit arrived. Every
+  intake workflow whose draft branch can already exist pushes it itself with
+  `--force-with-lease`, so a reviewer push during a run makes the push fail
+  instead of vanishing; new-event and new-year no longer go through
+  create-pull-request, which force-pushes over what it fetched.
+- An edit that changed a submission's title (or another answer its branch name
+  comes from) opened a second draft, and closing the stale one declined the
+  submission while the other was still open. The entry, event, "also deployed
+  by" and refresh workflows now update the draft already open for the issue,
+  on its branch.
+- The write-up of an entry was not prefilled from `/submit/`: GitHub's
+  new-issue page reads `?body=` as the plain issue body, so the question whose
+  id was `body` showed its default text instead. Field keys GitHub reserves
+  (`body`, `title`, `labels`, `assignees`, `milestone`, `projects`,
+  `template`) now get the id `entry_<key>` in the generated form, and the
+  submit page (scripted and no-script) sends the answer under that name, from
+  one shared helper (`assets/js/configurator/issue-form-ids.js`). The issue
+  title also keeps its `[Entry] ` prefix now, which the Title answer used to
+  overwrite. The schema check rejects a key that would repeat a remapped id
+  (`entry_body` beside `body`).
+- GitHub hides an issue form whose descriptions break its limits, and every
+  `?template=` link then opens a blank issue. The generator now keeps the
+  form's description and every question's description within 3 to 200
+  characters, moving the rest into a short note just above the question (or at
+  the top of the form) so no help text is lost. `npm run generate` and
+  `npm run validate` fail, naming the file and the field, when any form in
+  `.github/ISSUE_TEMPLATE/` breaks a limit. The shipped `schedule.yml` and
+  `also-deployed-by.yml` forms were over the limit and are fixed.
+- New-year and update-schedule pull requests now say `Closes #N`, so merging
+  them closes the issue and the issue can follow them.
+- Template tests that named a shipped schema field key (`body`, `deck_pdf`,
+  `area` and others) failed on a deployment whose schema names its fields
+  differently; they now read the schema or use a small schema of their own.
+
+### Security
+
+- `brace-expansion` is updated to 5.0.12 (GHSA-qhr7-859c-m2p7,
+  GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr). `braces` (GHSA-vfj7-8cjw-p6xm) has
+  no patched release; it reaches the tree only through Tailwind 3 at build
+  time, with this repository's own content globs, so it is registered as a P2
+  exception in `quality/security-exceptions.yml` until 2026-12-31 (#78).
+
 ## [1.10.0] — 2026-09-28
 
 Stable release. Records-only promotion of the accepted `v1.10.0-rc.2`
@@ -1305,7 +1419,9 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...HEAD
+[1.11.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.1...v1.11.0-rc.2
+[1.11.0-rc.1]: https://github.com/crypticpy/phct/compare/v1.10.0...v1.11.0-rc.1
 [1.10.0]: https://github.com/crypticpy/phct/compare/v1.10.0-rc.2...v1.10.0
 [1.10.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.10.0-rc.1...v1.10.0-rc.2
 [1.10.0-rc.1]: https://github.com/crypticpy/phct/compare/v1.9.0...v1.10.0-rc.1

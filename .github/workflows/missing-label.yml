@@ -1,18 +1,28 @@
 name: Missing content label
 
-# The quietest failure this repository has.
+# Every issue a person outside the project opens gets an answer, and no
+# submission goes silent.
 #
 # Every content workflow is triggered by a `content:*` label, and an issue form
 # applies a label only if that label already exists. In a fresh fork nobody has
 # run Bootstrap labels yet, so GitHub drops the label silently: the form is
-# filled in, the issue opens, no workflow matches it, and nothing — no comment,
-# no failed run, no red X — ever says why. The submitter waits.
+# filled in, the issue opens, no workflow matches it, and nothing (no comment,
+# no failed run, no red X) ever says why. The submitter waits. The same happens
+# when GitHub rejects an issue form as invalid: its links then open a plain
+# blank issue, and the submission arrives as free text with no label at all.
 #
-# This job watches for that shape: an issue that plainly came from one of the
-# content forms but carries no `content:*` label, and says so on the issue.
+# So, for an issue with no `content:*` label:
+#   * one that plainly came from a content form gets the "label missing"
+#     message, for whoever opened it;
+#   * any other issue from someone outside the project (not an owner, member
+#     or collaborator) gets a short acknowledgement with its number and the
+#     `needs-triage` label, so a maintainer finds it and the person knows it
+#     arrived.
+# Outside submissions also get `status:received`, which the /status/ page
+# reads. The wording lives in scripts/lib/notify.mjs.
 #
-# It reads nothing but the title and the label list, comments once, and never
-# writes to the repository.
+# It reads the title, the body's shape and the label list, comments at most
+# once, and never writes to the repository.
 
 on:
   issues:
@@ -28,17 +38,40 @@ jobs:
     if: "!contains(join(github.event.issue.labels.*.name, ','), 'content:')"
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
 
     steps:
-      - name: Say the label the automation needs is missing
+      # The default branch, for the message module and the site's wording.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Acknowledge the issue, or say the label is missing
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const title = String(process.env.ISSUE_TITLE || '');
+            const outsider = !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(process.env.AUTHOR_ASSOCIATION);
             // An issue-form submission renders each question as an `### `
             // heading. A hand-written issue does not, however form-like its
             // title looks.
@@ -68,13 +101,13 @@ jobs:
                 match: (t) => t.startsWith('Also deployed by:'),
               },
               // The entry form's prefix is the singular noun the site was
-              // configured with — "[Use case] ", "[Resource] ", "[Project] " —
+              // configured with ("[Use case] ", "[Resource] ", "[Project] "),
               // so it is matched by shape, minus the prefixes above and the
               // four non-content forms. A bracketed title alone is not enough:
               // a hand-written "[RFC] …" or "[Question] …" must stay unmatched,
               // so this rule also demands a form-shaped body.
               {
-                name: 'entry submission',
+                name: 'New entry',
                 label: 'content:new-entry',
                 match: (t) =>
                   formShapedBody && /^\[[^\]]+\]\s/.test(t) && !OTHER_FORMS.some((prefix) => t.startsWith(prefix)),
@@ -82,20 +115,29 @@ jobs:
             ];
 
             const form = FORMS.find((candidate) => candidate.match(title));
-            if (!form) {
-              core.info(`"${title}" does not look like a content form submission; saying nothing.`);
+            if (form) {
+              await notify.notifyIssue({
+                github, context, core,
+                kind: 'label_missing',
+                once: true,
+                status: outsider ? notify.STATUS.received : '',
+                vars: { form_name: form.name, form_label: form.label }
+              });
+              if (outsider) await notify.addTriageLabel({ github, context, core });
               return;
             }
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                `This looks like a **${form.name}** submission, but the label the automation needs is missing — usually because the repository's labels were never set up.`,
-                '',
-                `A maintainer should run **Actions → Bootstrap labels → Run workflow** once, then add the \`${form.label}\` label to this issue. Adding the label by itself will not start anything, though — every content workflow watches for the issue being opened or edited, not labelled — so make any small edit to the issue afterward (open it, add a space, save) to wake it up. Closing this issue and asking for the form to be resubmitted works too, now that the label exists.`,
-                '',
-                'Nothing you wrote is lost — it is all saved on this issue.',
-              ].join('\n'),
+            if (!outsider) {
+              core.info(`"${title}" was opened by a maintainer and is not a content submission; saying nothing.`);
+              return;
+            }
+            // No form claimed it, so it is not a tracked submission: no status
+            // label and no status-page link (the page only knows issues with a
+            // content:* label). A maintainer who relabels it starts the flow.
+            await notify.notifyIssue({
+              github, context, core,
+              kind: 'triage_ack',
+              once: true,
+              status: '',
+              vars: { status_url: '' }
             });
+            await notify.addTriageLabel({ github, context, core });

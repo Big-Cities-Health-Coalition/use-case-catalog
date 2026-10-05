@@ -60,6 +60,17 @@ jobs:
           # Applied by refresh-entry.yml when someone answers a refresh reminder
           # with "something changed": prose a maintainer has to turn into an edit.
           create "review:refresh-changes"     "D4A72C" "An entry was reported out of date; the described changes need applying"
+          # Where a submission stands, on its issue: exactly one at a time, kept
+          # by the intake workflows and submission-status.yml, read by the
+          # /status/ page. scripts/lib/notify.mjs creates any that are missing
+          # with the same colours and descriptions (NOTIFY_LABELS), and
+          # test/scripts/notify_workflows.test.mjs keeps the two lists equal.
+          create "status:received"            "0969DA" "Submission received; waiting for its draft or for triage"
+          create "status:in-review"           "6E40C9" "A draft pull request is open and with the reviewers"
+          create "status:changes-requested"   "D4A72C" "Waiting on the submitter: the reviewer asked for changes"
+          create "status:published"           "1A7F37" "Merged and live on the site"
+          create "status:declined"            "9E6A03" "Not published; the reason is on the draft pull request"
+          create "needs-triage"               "BF8700" "Opened outside the submission forms; a maintainer needs to read it"
           echo "Labels are ready."
 
       - name: Preflight the repository settings

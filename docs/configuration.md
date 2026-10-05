@@ -115,15 +115,16 @@ modules:
   cohorts: true     # Cohort / program-year pages with timelines & materials
   resources: false      # Curated resource library from _data/resources.yml
   governance: true    # /governance/ — review process, roles and policies from _data/governance.yml
+  status: true        # /status/ — "Check your submission": look up a submission by its GitHub number
 ```
 
 Each toggle does three things:
 
 1. Removes (or restores) the module's link from the header, via `_data/navigation.yml`'s `module:` key.
 2. Shows or hides the module's block on the home page (`index.md` checks `cfg.modules.<name>`).
-3. **Removes the module's pages from the build entirely.** `_plugins/modules.rb` runs on `post_read` and drops any page whose URL starts with the module's path prefix when that module is off — those pages are not built, not in the sitemap, and not in `search.json`. Prefixes come from `_data/modules.yml` (`/cohorts/`, `/events/`, `/governance/`, `/resources/`, `/submit/`); `catalog`'s prefix is derived from the schema's `entry.path` instead, since it has to track the configured entry folder. Turning the module back on brings its pages back on the next build without further changes.
+3. **Removes the module's pages from the build entirely.** `_plugins/modules.rb` runs on `post_read` and drops any page whose URL starts with the module's path prefix when that module is off — those pages are not built, not in the sitemap, and not in `search.json`. Prefixes come from `_data/modules.yml` (`/cohorts/`, `/events/`, `/governance/`, `/resources/`, `/status/`, `/submit/`); `catalog`'s prefix is derived from the schema's `entry.path` instead, since it has to track the configured entry folder. Turning the module back on brings its pages back on the next build without further changes.
 
-The shipped `ai-use-cases` configuration has `catalog`, `submit`, `carousel`, `stats` and `governance` on, and `events`, `cohorts` and `resources` off. Sample data for the three off-by-default modules still ships in `_data/`, so turning one on gives you something to look at immediately.
+The shipped `ai-use-cases` configuration has `catalog`, `submit`, `carousel`, `stats`, `governance` and `status` on, and `events`, `cohorts` and `resources` off. Sample data for the three off-by-default modules still ships in `_data/`, so turning one on gives you something to look at immediately.
 
 ### Home page copy
 
@@ -185,6 +186,102 @@ The shape of the form follows the schema, with nothing to configure here: when
 optional questions" toggle offers a required-only short form whenever the
 schema has optional fields. See
 [content-model.md → Groups](content-model.md#groups).
+
+### Status page
+
+```yaml
+status:
+  heading: "Check your submission"   # the page's <h1>
+  intro: "Already sent us something? Enter its number to see where it is in the review."
+  label: "Submission number"         # the number field's label
+  hint: "GitHub gave your submission a number when you sent it, like #42. …"
+  button: "Check status"
+  link_label: "Check a submission"   # the footer link to /status/
+```
+
+`/status/` (module `status`, `status/index.md`) lets a submitter type the
+number GitHub gave their submission and see where it stands: its title, the
+date it was sent, a step indicator, what happens next, and a link to the issue
+on GitHub. The page reads the issue straight from GitHub's public API
+(`https://api.github.com/repos/<github.repository>/issues/<n>`) in the
+reader's browser, with no token and no server. Every key above is optional; a
+blank or missing key uses the wording shown.
+
+- **Linking to a submission.** `/status/?n=<number>` opens the page and looks
+  the number up straight away (a leading `#` is accepted, as in `?n=%2342`).
+  The issue automation links submitters here this way.
+- **Stages.** The stage comes from the issue's `status:*` label:
+  `status:received` (Received), `status:in-review` (In review),
+  `status:changes-requested` (Changes requested), `status:published`
+  (Published) and `status:declined` (Not published). With no status label the
+  page works it out from the issue and says it is a best guess: open is
+  Received, closed as completed is Published, closed as not planned or
+  duplicate is Not published, and closed with no reason is Closed. Only
+  issues with a `content:*` label count as submissions; a pull request or any
+  other issue gets "isn't a submission".
+- **When GitHub can't answer.** GitHub allows about 60 unauthenticated lookups
+  an hour per reader. When that runs out, when the network fails, or when
+  JavaScript is off, the page offers a plain link to the issue on GitHub
+  instead.
+- **The repository must be public.** GitHub's API answers 404 for a private
+  repository, so every lookup would read "couldn't find". Set
+  `modules.status: false` on a site whose issues are private. With no
+  `github.repository` at all the page explains that there is nothing to look
+  up yet.
+- **On by default, including after an upgrade.** `_plugins/modules.rb` only
+  drops a module's pages when its key is explicitly `false`, so a `site.yml`
+  written before this module existed builds `/status/` and shows its links
+  without any edit. The stage wording is in `status/index.md`.
+
+When the module is on and `github.repository` is set, the footer gets a
+*Check a submission* link (`status.link_label`) and the submit page's "what
+happens next" and confirmation panel link here. There is no header item.
+
+### Submitter notifications
+
+Submitters are not subscribed to the draft pull request the automation opens,
+but GitHub emails them every comment on their own issue. So each step of a
+submission is a comment there, and the issue carries exactly one status label
+(`status:received`, `status:in-review`, `status:changes-requested`,
+`status:published` or `status:declined`). The wording is in
+`scripts/lib/notify.mjs` and works with no configuration; the optional
+`notifications:` block in `_data/site.yml` adjusts it:
+
+```yaml
+notifications:
+  turnaround: ""          # "How long it takes" in the comments; defaults to submit.turnaround
+  appeal: ""              # "If you disagree:" on a declined submission; defaults to the
+                          # first paragraph of the appeals policy in _data/governance.yml
+                          # (while the governance module is on), then a generic line
+  reviewers:
+    committee: ""         # who `review:committee` hands a submission to ("review committee")
+    partner: ""           # who `review:partner` hands it to ("partner reviewers")
+  logo: ""                # image above every comment: a site path or an https:// address
+  logo_alt: ""            # its alt text; defaults to the site name
+  messages:               # replace any message by name
+    declined: |
+      Thank you for sharing **{number}** with us. ...
+```
+
+Message names: `draft_ready`, `draft_updated`, `draft_mention` (posted once on
+the draft, mentioning the submitter so GitHub subscribes them to the review),
+`scaffold_failed`, `pr_failed`, `paused`, `no_change`, `handed_over`,
+`triage_ack`, `label_missing`, `changes_requested`, `with_committee`,
+`with_partner`, `declined`, `published`, `edit_held`, `edit_summary` (posted on
+the draft for the reviewer), and the shared paragraphs `status_help` and
+`status_page`. Placeholders are written `{name}`: `{number}` (the issue,
+as `#12`), `{pr_url}`, `{notes_url}`, `{page_url}`, `{turnaround}`,
+`{appeal}`, `{reviewers}`, `{site_name}`, `{reason}` (quoted), `{details}`,
+`{changes}`, `{status_help}` and `{status_url}`. Separate paragraphs with a
+blank line; a paragraph whose placeholders are all empty is left out, so
+"**How long it takes:** {turnaround}" disappears when no turnaround is set. A
+name the automation does not send is ignored with a warning in the run log, and
+a misspelt placeholder is printed as written, so a typo shows up in the comment.
+
+The `{status_url}` link appears unless `modules.status: false` switches the
+`/status/` page off.
+Every comment carries a hidden `<!-- phct-notify:… -->` line so a re-run never
+posts the same message twice.
 
 ### Catalog behaviour
 
@@ -314,6 +411,12 @@ to `/governance/#accessibility`; leave the key blank to drop the line. The
 bottom bar also carries a *Feed* link to the catalog's Atom feed whenever the
 catalog has entries — the visible twin of the `<link rel="alternate">` in
 `<head>`, guarded by the same emptiness test.
+
+The footer's link list ends with a *Check a submission* link to `/status/`
+(see [Status page](#status-page)) whenever the `status` module is on and
+`github.repository` is set. It is added by the template rather than listed in
+`footer.links`, so an existing site gets it on upgrade; list `/status/` in
+`footer.links` yourself and the automatic one steps aside.
 
 ### Analytics
 
@@ -503,6 +606,7 @@ Keys: `generated_at`, and `entries` keyed by entry slug. Each record carries `ap
 | `events` | `/events/` calendar, home page "Upcoming events" card | Event pages under `/events/` |
 | `cohorts` | `/cohorts/` index and `/cohorts/<year>/` pages, cohort filter facet on entries with a `cohort` field | All cohort and cohort-event pages |
 | `resources` | `/resources/` curated link library from `_data/resources.yml` | The resources page |
+| `status` | `/status/`, "Check your submission": look up a submission's stage by its GitHub number (see [Status page](#status-page)); the footer's *Check a submission* link and the status link in the submit page's "what happens next" | The status page and every link to it |
 | `governance` | `/governance/` — how review works, who does what, and the standing policies (privacy, licensing, data governance, accessibility, maintenance, appeals, conduct) from `_data/governance.yml`; the *Governance* nav link, the governance paragraph on `/about/` and `/submit/`, and the footer's *Read the accessibility statement* link | The governance page and every link to it |
 
 ## The three ways to configure

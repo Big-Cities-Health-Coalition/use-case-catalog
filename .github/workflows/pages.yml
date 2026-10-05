@@ -273,7 +273,9 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
+      pull-requests: read
     # Never let a courtesy comment turn a successful deploy red.
     continue-on-error: true
 
@@ -289,6 +291,21 @@ jobs:
           set -euo pipefail
           echo "value=$(ruby -ryaml -e 'puts((YAML.load_file("_data/schema.yml")["entry"] || {})["path"] || "catalog")')" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      # Marks each merged submission's issue status:published and, for a new
+      # entry, says where it is live (once per issue; a re-run deploy does not
+      # repeat it). Wording: scripts/lib/notify.mjs.
       - name: Tell the submitter their entry is live
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -296,37 +313,10 @@ jobs:
           ENTRY_PATH: ${{ steps.entry-path.outputs.value }}
         with:
           script: |
-            const pageUrl = process.env.PAGE_URL;
-            if (!pageUrl) return;
-            const { owner, repo } = context.repo;
-
-            // Which pull request this push merged, and which entry it added.
-            const { data: pulls } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner, repo, commit_sha: context.sha,
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.announcePublished({
+              github, context, core,
+              pageUrl: process.env.PAGE_URL,
+              entryPath: process.env.ENTRY_PATH
             });
-            const entryPath = process.env.ENTRY_PATH;
-            const filePattern = new RegExp(`^${entryPath}/([^/]+)/index\\.md$`);
-
-            for (const pull of pulls) {
-              if (!pull.merged_at) continue;
-              // The scaffolder writes "Closes #N" into the body it generates,
-              // so that is where the submitter's issue number lives.
-              const closes = /(?:^|\s)(?:closes|fixes|resolves)\s+#(\d+)/i.exec(pull.body || '');
-              if (!closes) continue;
-
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                owner, repo, pull_number: pull.number, per_page: 100,
-              });
-              const added = files
-                .filter((file) => file.status === 'added')
-                .map((file) => filePattern.exec(file.filename))
-                .find(Boolean);
-              if (!added) continue;
-
-              const url = `${pageUrl.replace(/\/$/, '')}/${entryPath}/${added[1]}/`;
-              await github.rest.issues.createComment({
-                owner, repo,
-                issue_number: Number(closes[1]),
-                body: `Your entry is now live at ${url}\n\nThank you for contributing it.`,
-              });
-            }

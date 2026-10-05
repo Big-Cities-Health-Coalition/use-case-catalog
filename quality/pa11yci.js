@@ -7,7 +7,7 @@ const yaml = require('js-yaml');
 const { qualityUrls, showcaseUrls } = require('./urls.js');
 
 const BASE = process.env.QUALITY_BASE_URL || 'http://127.0.0.1:4173';
-const { home, catalog, submit, governance, compare, atoz, notFound, entries } = qualityUrls(BASE);
+const { home, catalog, submit, governance, compare, atoz, status, notFound, entries } = qualityUrls(BASE);
 // The showcase (landing + examples) is a separate build on a separate port, and
 // only exists when quality.yml made one — see showcaseUrls().
 const showcase = showcaseUrls(process.env.QUALITY_SHOWCASE_BASE_URL || '');
@@ -56,6 +56,9 @@ module.exports = {
     ...(governance ? [governance] : []),
     ...(compare ? [compare] : []),
     ...(atoz ? [atoz] : []),
+    // The status page, and its error state: a number that is not one is refused
+    // in the page before anything is fetched, so the audit never calls GitHub.
+    ...(status ? [status, `${status}?n=not-a-number`] : []),
     notFound,
     setup,
     // Wizard steps that only exist after interaction: Look (live preview) and
@@ -82,6 +85,7 @@ module.exports = {
     { url: catalog, viewport: mobile },
     ...entries.slice(0, 1).map((url) => ({ url, viewport: mobile })),
     { url: submit, viewport: mobile },
+    ...(status ? [{ url: status, viewport: mobile }] : []),
     // Interactive states that only exist after a click.
     // The mobile filter sheet: a modal dialog that inerts the rest of the page.
     {

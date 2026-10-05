@@ -354,4 +354,30 @@ class ThemeFiltersTest < Minitest::Test
            .link_access("https://files.example.org/x")
     assert_equal "", meta["access"], "a rule naming a level that is not configured labels nothing"
   end
+
+  ISSUE_FORM_HELPER = File.expand_path("../../assets/js/configurator/issue-form-ids.js", __dir__)
+
+  def test_issue_form_id_moves_a_key_github_claims_out_of_the_way
+    assert_equal "entry_body", @filters.issue_form_id("body")
+    assert_equal "entry_title", @filters.issue_form_id("title")
+    assert_equal "entry_template", @filters.issue_form_id("template")
+  end
+
+  def test_issue_form_id_leaves_every_other_key_alone
+    assert_equal "write_up", @filters.issue_form_id("write_up")
+    assert_equal "summary", @filters.issue_form_id("summary")
+    assert_equal "entry_body", @filters.issue_form_id("entry_body")
+  end
+
+  # The no-script /submit/ route names controls with this filter; the generated
+  # form and the scripted handoff use the JavaScript helper. They must agree.
+  def test_issue_form_id_list_and_prefix_match_the_javascript_helper
+    source = File.read(ISSUE_FORM_HELPER)
+    list = source[/RESERVED_PARAMS = Object\.freeze\(\[([^\]]*)\]\)/, 1]
+    prefix = source[/const PREFIX = '([^']*)'/, 1]
+    refute_nil list, "RESERVED_PARAMS not found in #{ISSUE_FORM_HELPER}"
+    refute_nil prefix, "PREFIX not found in #{ISSUE_FORM_HELPER}"
+    assert_equal CatalogTemplate::ThemeFilters::ISSUE_FORM_RESERVED_PARAMS, list.scan(/'([^']+)'/).flatten
+    assert_equal CatalogTemplate::ThemeFilters::ISSUE_FORM_ID_PREFIX, prefix
+  end
 end

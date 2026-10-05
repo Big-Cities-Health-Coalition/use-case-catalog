@@ -26,6 +26,7 @@ export const blank = {
       cohorts: false,
       resources: false,
       governance: false,
+      status: true,
     },
     hero: {
       eyebrow: 'Your Organization',

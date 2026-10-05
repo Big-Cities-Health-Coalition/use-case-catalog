@@ -58,6 +58,16 @@
   }
   .progress-link[data-done="true"] .progress-dot { background: CanvasText; color: Canvas; }
   .progress-link[data-done="partial"] .progress-dot { border-width: 3px; }
+  /* The status page's step list reuses the same circles; its current step loses
+     the tinted ring, so it gets the thick edge instead. */
+  .status-step[data-state] .progress-dot {
+    forced-color-adjust: none;
+    background: Canvas;
+    border-color: CanvasText;
+    color: CanvasText;
+  }
+  .status-step[data-state="done"] .progress-dot { background: CanvasText; color: Canvas; }
+  .status-step[data-state="current"] .progress-dot { border-width: 3px; }
   /* The connecting track is a background-color box: Canvas on Canvas. */
   .progress-step::before { background: CanvasText; }
 
