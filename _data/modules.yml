@@ -21,3 +21,5 @@ submit:
   - "/submit/"
 governance:
   - "/governance/"
+status:
+  - "/status/"

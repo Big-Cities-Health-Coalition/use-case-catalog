@@ -15,6 +15,9 @@ on:
 # Set the repository variable SUBMISSIONS_OPEN to `false` to accept issues from
 # members and collaborators only; leaving it unset keeps them open.
 #
+# Replies on the issue come from scripts/lib/notify.mjs and keep one
+# `status:*` label on it (see new-entry.yml).
+#
 # The jobs below declare exactly the scopes they need; nothing is granted by default.
 permissions: {}
 
@@ -46,14 +49,30 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          # create-pull-request pushes with its own `token:`, so the checkout
-          # does not need to leave credentials in .git/config.
-          persist-credentials: false
+          # The push below needs credentials; the checkout keeps them on purpose.
+          # zizmor: ignore[artipacked]
+          token: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Mark the submission received
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
 
       - name: Read the cohort year from the issue
         if: github.event_name == 'issues'
@@ -103,19 +122,10 @@ jobs:
           STEP_ERROR: ${{ steps.year.outputs.error || steps.scaffold.outputs.error }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const detail = process.env.STEP_ERROR || 'The step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'This cohort year could not be set up yet.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix the problem and the automation will try again. If the message above does not tell you what to change, comment here and a maintainer will help.'
-              ].join('\n')
-            });
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason: detail } });
             core.setFailed(detail);
 
       # A dispatch has no issue to comment on, so it still has to fail loudly.
@@ -125,29 +135,107 @@ jobs:
           echo "The year could not be resolved or scaffolded; see the steps above." >&2
           exit 1
 
-      - name: Create pull request
-        id: cpr
+      # An edit to the issue re-runs this job, which rebuilds the branch and
+      # force-pushes it. Once a reviewer has committed to it that would erase
+      # their work, so it is only rebuilt while every commit on it is the
+      # automation's. See scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
         if: steps.scaffold.outputs.created == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        env:
+          BRANCH: cohort/${{ steps.year.outputs.value }}
+        run: node scripts/branch_guard.mjs
+
+      - name: Hand the edit to the reviewer
+        if: github.event_name == 'issues' && steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: cohort/${{ steps.year.outputs.value }}
         with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH });
+
+      # This job pushes the branch itself rather than through
+      # peter-evans/create-pull-request, which re-fetches the branch and
+      # force-pushes over whatever it found, so a reviewer push between the
+      # guard and that fetch would be lost. Here the lease is the
+      # remote-tracking ref the guard read: a reviewer push since then makes
+      # the push fail instead of vanishing.
+      - name: Commit the cohort on its branch
+        id: commit
+        if: steps.scaffold.outputs.created == 'true' && steps.guard.outputs.held != 'true'
+        env:
+          BRANCH: cohort/${{ steps.year.outputs.value }}
+          COHORT_YEAR: ${{ steps.year.outputs.value }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          # `git add -A` is safe only because this step is gated on the
+          # scaffolder having created the year, and it is what
+          # create-pull-request committed before: everything it wrote.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "The scaffolder produced no changes." >&2
+            exit 0
+          fi
+          git commit -m "chore: scaffold cohort $COHORT_YEAR"
+          # The branch is machine-generated, so a re-run replaces its contents
+          # rather than merging.
+          git push --force-with-lease origin "HEAD:refs/heads/$BRANCH"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pull request
+        id: pr
+        if: steps.commit.outputs.created == 'true'
+        env:
           # With CONTENT_BOT_TOKEN the pull request has a real author and the
           # normal `pull_request` triggers fire; without it the step below
           # dispatches the checks by hand.
-          token: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          branch: cohort/${{ steps.year.outputs.value }}
-          commit-message: "chore: scaffold cohort ${{ steps.year.outputs.value }}"
-          title: "Scaffold cohort ${{ steps.year.outputs.value }}"
-          body: |
-            ${{ github.event_name == 'issues' && format('Generated from issue #{0}.', github.event.issue.number) || 'Started from the Actions tab.' }}
-
-            Scaffolds `cohorts/${{ steps.year.outputs.value }}/` and `_data/cohorts/${{ steps.year.outputs.value }}.yml`.
-
-            ### Maintainer checklist
-            - [ ] Replace the placeholder intro on the cohort landing page
-            - [ ] Replace the placeholder events with the real schedule
-            - [ ] Merge to publish
-          labels: content:new-year
-          delete-branch: true
+          GH_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: cohort/${{ steps.year.outputs.value }}
+          COHORT_YEAR: ${{ steps.year.outputs.value }}
+          # Empty for a dispatch from the Actions tab, which has no issue.
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # Everything between the braces is literal markdown; a backtick here is
+          # a code span, not a command substitution.
+          # shellcheck disable=SC2016
+          {
+            if [ -n "$ISSUE_NUMBER" ]; then
+              printf 'Generated from issue #%s.\n\nCloses #%s\n\n' "$ISSUE_NUMBER" "$ISSUE_NUMBER"
+            else
+              printf 'Started from the Actions tab.\n\n'
+            fi
+            printf 'Scaffolds `cohorts/%s/` and `_data/cohorts/%s.yml`.\n\n' "$COHORT_YEAR" "$COHORT_YEAR"
+            printf '### Maintainer checklist\n'
+            printf -- '- [ ] Replace the placeholder intro on the cohort landing page\n'
+            printf -- '- [ ] Replace the placeholder events with the real schedule\n'
+            printf -- '- [ ] Merge to publish\n'
+          } > /tmp/pr-body.md
+          title="Scaffold cohort $COHORT_YEAR"
+          # A re-run reuses the open pull request on this branch. `--state
+          # open` matters: a closed or merged one must not be edited in place
+          # of opening the draft.
+          url="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+          if [ -n "$url" ]; then
+            gh pr edit "$url" --title "$title" --body-file /tmp/pr-body.md --add-label content:new-year
+            echo "operation=updated" >> "$GITHUB_OUTPUT"
+          else
+            url="$(gh pr create \
+              --base "${GITHUB_REF_NAME}" \
+              --head "$BRANCH" \
+              --title "$title" \
+              --label content:new-year \
+              --body-file /tmp/pr-body.md)"
+            echo "operation=created" >> "$GITHUB_OUTPUT"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
       # A pull request opened with GITHUB_TOKEN does not trigger `pull_request`
       # workflows; GitHub parks them behind "Approve and run". `workflow_dispatch`
@@ -155,11 +243,11 @@ jobs:
       # SHA — the pull request's head SHA — so they appear in its Checks tab.
       # See .github/workflows/new-entry.yml for the long version.
       - name: Run the content checks on the new branch
-        if: steps.cpr.outputs.pull-request-number != ''
+        if: steps.pr.outputs.url != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BOT_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN }}
-          BRANCH: ${{ steps.cpr.outputs.pull-request-branch }}
+          BRANCH: cohort/${{ steps.year.outputs.value }}
         run: |
           set -euo pipefail
           if [ -n "$BOT_TOKEN" ]; then
@@ -176,36 +264,30 @@ jobs:
           done
 
       - name: Link the pull request from the issue
-        if: github.event_name == 'issues' && steps.cpr.outputs.pull-request-number != ''
+        if: github.event_name == 'issues' && steps.pr.outputs.url != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
-          PR_OPERATION: ${{ steps.cpr.outputs.pull-request-operation }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_OPERATION: ${{ steps.pr.outputs.operation }}
           COHORT_YEAR: ${{ steps.year.outputs.value }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             // An edited issue updates the existing pull request; say that
             // instead of repeating the full first-time comment.
-            const body = process.env.PR_OPERATION === 'updated'
-              ? [
-                  'Updated the pull request from your edit:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'The diff there now shows the new scaffold.'
-                ]
-              : [
-                  `Cohort ${process.env.COHORT_YEAR} is now a pull request waiting for a maintainer:`,
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'It carries a placeholder landing page and three placeholder events. Nothing is published until a maintainer merges it; after that, use the **Update a cohort schedule** form to put the real events in.'
-                ];
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body.join('\n')
+            const created = process.env.PR_OPERATION === 'created';
+            await notify.notifyIssue({
+              github, context, core,
+              kind: created ? 'draft_ready' : 'draft_updated',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: {
+                details: created
+                  ? `The draft sets up cohort ${process.env.COHORT_YEAR} with a placeholder landing page and three placeholder events. Once it is merged, use the **Update a cohort schedule** form to put the real events in.`
+                  : 'The diff there now shows the new scaffold.'
+              }
             });
 
       # scaffold_year.rb never overwrites, so a year that is already set up
@@ -217,17 +299,11 @@ jobs:
           COHORT_YEAR: ${{ steps.year.outputs.value }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const year = process.env.COHORT_YEAR;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                `Cohort ${year} already exists — nothing to scaffold, so no pull request was opened.`,
-                '',
-                `Use the **Update a cohort schedule** form to change the events stored for ${year}, or the **Add event details** form to give one of them its own page.`
-              ].join('\n')
-            });
+            const reason = `Cohort ${year} already exists. Use the **Update a cohort schedule** form to change the events stored for ${year}, or the **Add event details** form to give one of them its own page.`;
+            await notify.notifyIssue({ github, context, core, kind: 'no_change', vars: { reason } });
 
       # Everything above can still leave the issue silent if the push or the
       # pull request itself is refused — most often because "Allow GitHub
@@ -239,16 +315,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'Something went wrong while turning this issue into a pull request, so no pull request was opened.',
-                '',
-                'The usual cause is one repository setting: a maintainer should open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });

@@ -7,6 +7,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 
+import { DEFAULT_MESSAGES } from '../../scripts/lib/notify.mjs';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 function workflow(name) {
@@ -881,13 +883,19 @@ test('every issue-driven content workflow answers on the issue, in success and i
     // repository setting below) must not leave the issue silent.
     const catchAll = steps.find((step) => /failure\(\)/u.test(String(step.if ?? '')));
     assert.ok(catchAll, `${name} has no if: failure() comment step`);
+    // The words live in scripts/lib/notify.mjs (checked below), so a
+    // deployment can reword them under `notifications:` in _data/site.yml.
     assert.match(
       String(catchAll.with?.script ?? ''),
-      /Settings → Actions → General → Workflow permissions/u,
-      `${name} does not tell the maintainer which setting to change`
+      /notify\.notifyIssue\(\{[^}]*kind: 'pr_failed'/u,
+      `${name}'s failure step does not post the pr_failed message`
     );
-    assert.match(String(catchAll.with?.script ?? ''), /issues\.createComment/u);
   }
+  assert.match(
+    DEFAULT_MESSAGES.pr_failed,
+    /Settings → Actions → General → Workflow permissions/u,
+    'the failure message does not tell the maintainer which setting to change'
+  );
 
   // The label the forms apply has to exist before any of the above can run.
   const missing = workflow('missing-label.yml');
@@ -897,8 +905,10 @@ test('every issue-driven content workflow answers on the issue, in success and i
   // Every content workflow triggers on `opened`/`edited`, never `labeled` —
   // adding the label a maintainer is told to add here does not by itself
   // start anything, so the rescue instruction has to say what does.
-  assert.match(missing, /will not start anything/u);
-  assert.match(missing, /make any small edit to the issue afterward/u);
+  assert.match(missing, /kind: 'label_missing'/u);
+  assert.match(DEFAULT_MESSAGES.label_missing, /Bootstrap labels/u);
+  assert.match(DEFAULT_MESSAGES.label_missing, /will not start anything/u);
+  assert.match(DEFAULT_MESSAGES.label_missing, /make any small edit to the issue afterward/u);
 });
 
 test('protected-main automation stays reviewable and generated PRs can satisfy required checks', () => {

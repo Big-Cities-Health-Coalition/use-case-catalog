@@ -44,6 +44,8 @@ Work down this list once, in order. [Repository settings at a glance](#repositor
   - `content:also-deployed-by` — triggers `also-deployed-by.yml` (an organization saying they deployed an entry too)
   - `verification` — applied by `verification-sweep.yml` to the refresh issue it keeps per stale entry; nothing triggers on it
   - `review:refresh-changes` — applied by `refresh-entry.yml` when someone reports an entry out of date; nothing triggers on it
+  - `status:received`, `status:in-review`, `status:changes-requested`, `status:published`, `status:declined`: the one status a submission issue is in, kept up to date by the automation and read by the `/status/` page (see [What the submitter is told](#what-the-submitter-is-told)); nothing triggers on them
+  - `needs-triage`: applied by `missing-label.yml` to an issue from outside the project that no submission form claimed, so you can find it
 
   The generated issue forms (`.github/ISSUE_TEMPLATE/*.yml`) already apply these labels when someone opens the issue; you just need the labels to exist in the repo first, or GitHub silently drops them.
 - [ ] **`_data/site.yml` → `github.repository`**: set to this repo's `owner/repo`. Drives the submit form's issue links and every "edit on GitHub" link.
@@ -68,10 +70,12 @@ The rules you are applying are published on the site's **Governance** page (`/go
 
 1. A submission arrives as a GitHub issue labelled `content:new-entry` (opened via `/submit/` or the issue form directly). The form walks submitters through one section at a time and offers a short form that hides the optional questions, so an entry that arrives with only the required answers is the form working as designed, not a careless submitter — ask for the extras in review if you want them.
 2. The `New entry from issue` workflow (`.github/workflows/new-entry.yml`) runs automatically, scaffolds `catalog/<slug>/index.md` from the issue body, and opens a pull request that closes the issue on merge.
+   - The submitter hears from it straight away: an acknowledgement on the issue with its number, what happens next, the turnaround, and the link to the draft. The submitter is also mentioned once on the draft, which subscribes them to your review comments there.
    - If scaffolding fails (e.g. missing title, duplicate slug), the workflow comments the error back on the issue instead of opening a PR. Editing the issue to fix the problem re-triggers the workflow (it also runs on `issues: edited`).
+   - Once you have committed to the draft branch (or pressed **Update branch**), an edit to the issue no longer rebuilds it, because that would erase your commits. You get a comment on the draft listing which answers changed, before and after, and the submitter is told their edit reached you.
 3. Any images the submitter dropped into the issue are downloaded into the entry folder by the same workflow (see [Screenshots and images](#screenshots-and-images) below), so the pull request already contains the pictures — you review them, you do not have to fetch them.
 4. On the pull request, work through the checklist below. The pull request body already carries a **Maintainer checklist** — the review criteria from `_data/governance.yml` (the same list the governance page shows; a generic five when the site publishes none), the mechanics, and the review-status flip — and, when an answer matched a field's `escalate_on` list in the schema, a **Closer review** block above it naming the field and the answer (the shipped schema flags an unticked PII/PHI attestation, PII/PHI/CJIS under *Data it touches*, and a *Public-facing* audience). Those pull requests also carry the `review:data-governance` label, so you can see from the list which ones are not a five-minute intake.
-5. Set the review status. The scaffold wrote `review_status: "Under review"`; before merging set it to `Reviewed & approved` (the schema names both values: `entry.status_scaffold_value`, `entry.status_approved_value`). If the entry needs changes, leave the pull request open with `review:revisions-requested` and say specifically what to change — the submitter edits the issue or replies on the pull request, and it comes back round.
+5. Set the review status. The scaffold wrote `review_status: "Under review"`; before merging set it to `Reviewed & approved` (the schema names both values: `entry.status_scaffold_value`, `entry.status_approved_value`). If the entry needs changes, leave the pull request open with `review:revisions-requested` (or submit a review that requests changes) and say specifically what to change. The submitter gets an email pointing at your notes and explaining how to update; they edit the issue or reply on the pull request, and it comes back round.
 6. Merge. The `Build & Deploy` workflow runs on every push to `main` and republishes the site, usually within a couple of minutes. Once it has deployed, the automation comments the published URL back on the issue the submission came from ("Your entry is now live at …"), so the submitter hears the outcome without you writing anything. That comment is best-effort: if it does not appear, nothing is wrong with the deploy.
 
 ### Review tiers and labels
@@ -87,13 +91,34 @@ The governance page describes review as tiers with turnaround targets; the pull 
 | `review:revisions-requested` | Whoever reviewed | Sent back with specific changes on the pull request. Swap it for the tier label when the changes land. |
 | `review:declined` | Governance committee | Not published, with a rationale on the pull request; the pull request is closed, the branch may be deleted, and the submitter may appeal to the full committee. |
 
-The labels are a convention the workflow does not enforce; if your process has different tiers, rename them in `bootstrap-labels.yml` — the scaffolder's label step is best-effort and reports, rather than fails, when a label is missing.
+The labels are a convention the workflow does not enforce; if your process has different tiers, rename them in `bootstrap-labels.yml` — the scaffolder's label step is best-effort and reports, rather than fails, when a label is missing. Four of them also tell the submitter something (below), so a renamed `review:revisions-requested`, `review:committee`, `review:partner` or `review:declined` stops those messages until `REVIEW_LABELS` in `scripts/lib/notify.mjs` and the label list in `submission-status.yml` are renamed to match.
+
+### What the submitter is told
+
+Submitters are not subscribed to the draft pull request, but GitHub emails them every comment on their own issue. So the automation reports each step there, and keeps one `status:*` label on the issue for the `/status/` page:
+
+| What happens | Comment on the issue | Status |
+|---|---|---|
+| The issue is opened | (the acknowledgement follows with the draft) | `status:received` |
+| The draft pull request is opened or rebuilt | Number, what happens next, turnaround, draft link | `status:in-review` |
+| Scaffolding fails, or the pull request cannot be opened | What went wrong and how to retry | `status:received` |
+| `review:revisions-requested` added, or a review requesting changes by the owner, an organization member or a collaborator | Where your notes are and how to update; once per round | `status:changes-requested` |
+| `review:revisions-requested` removed | None | `status:in-review` |
+| `review:committee` / `review:partner` added | A short "it moved on" note, once | `status:in-review` |
+| `review:declined` added, or the pull request closed unmerged (unless another draft for the issue is still open and `review:declined` is not on the closed one) | Your reason is on the draft, and how to appeal; the issue is closed as not planned | `status:declined` |
+| Merged | "Your entry is now live at …" once the deploy finishes | `status:published` |
+
+Every content form (events, schedules, cohort years, refreshes, "also deployed by", Apply setup) acknowledges the same way. Its draft carries the form's `content:*` label, and of the review rows only the last two apply to it: closed unmerged is a decline (with the same "another draft still open" exception), merged is published. The `review:*` labels and change-requesting reviews only move entry submissions. A draft whose "Closes #N" names an issue from a different form changes nothing. An issue that arrives with no `content:*` label gets an answer too: one that looks like a form submission gets the "label is missing" instructions, and anything else from someone outside the project gets a short acknowledgement and `needs-triage`. Issues opened by owners, members and collaborators that no form claimed are left alone.
+
+The wording is in `scripts/lib/notify.mjs` and can be changed under `notifications:` in `_data/site.yml` ([configuration.md](configuration.md#submitter-notifications)). These messages run on the built-in `GITHUB_TOKEN` and never check out pull request code: `submission-status.yml` runs on `pull_request` (not `pull_request_target`), only for pull requests from a branch of this repository, from a checkout of the default branch.
 
 **Declining.** Rare, and always with a reason the submitter can act on. A comment that has worked:
 
-> Thanks for submitting this. We are not going to publish it as it stands, because *[the specific reason — e.g. the shared material includes patient-level data and the attestation cannot be made honestly; or there is no working link or reachable contact, so a reader could not evaluate it]*. If *[what would change the outcome]*, please reopen by editing the issue and we will take another look. You can also ask for this decision to go to the full Governance Committee by replying here.
+> Thanks for submitting this. We are not going to publish it as it stands, because *[the specific reason — e.g. the shared material includes patient-level data and the attestation cannot be made honestly; or there is no working link or reachable contact, so a reader could not evaluate it]*. If *[what would change the outcome]*, you are welcome to revise it and submit it again through the form. If you disagree with the decision, reply on your submission issue and ask for it to go to the full Governance Committee.
 
-Add `review:declined`, close the pull request without merging, and leave the issue open long enough for the submitter to see the comment — the automation does not comment on a closed pull request.
+Add `review:declined` and close the pull request without merging. The automation then comments on the submitter's issue (which is where their email comes from), pointing at your reason on the pull request and at the appeal route, and closes the issue as not planned. It does this once, whichever of the two you do first. A closed issue is not rebuilt by an edit, so the way back is the one the comment gives: reply on the issue to appeal, or submit again.
+
+Closing a draft *without* `review:declined` while another draft for the same issue is still open (an older duplicate, or one you replaced by hand) is treated as housekeeping: the submitter hears nothing and the open draft carries on. An edit to the issue always updates the draft that is already open, even when the new title would name a different branch.
 
 ### Review checklist
 

@@ -27,6 +27,7 @@ export const cohortPortal = {
       cohorts: true,
       resources: false,
       governance: false,
+      status: true,
     },
     hero: {
       eyebrow: 'Data Learning Cohorts',

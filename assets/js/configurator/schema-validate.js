@@ -8,6 +8,9 @@
 
 import { isPlainObject } from './yaml-emit.js';
 import { ICON_NAMES } from './defaults.generated.js';
+import './issue-form-ids.js'; // sets globalThis.PHCTIssueForm (shared with /submit/)
+
+const { issueFormId } = globalThis.PHCTIssueForm;
 
 /** Every `type` a field may declare. */
 export const FIELD_TYPES = [
@@ -353,6 +356,7 @@ export function checkSchema(schema) {
   }
 
   const seenKeys = new Map();
+  const seenIds = new Map();
   const seenLabels = new Map();
   let markdownCount = 0;
   let lineCount = 0;
@@ -382,6 +386,23 @@ export function checkSchema(schema) {
       report.error(`${path}.key`, `"${key}" is already used by field ${seenKeys.get(key) + 1}.`);
     } else {
       seenKeys.set(key, index);
+      // A key GitHub's new-issue page reads as its own parameter (`body`,
+      // `title`, ...) gets the element id `entry_<key>` in the issue form
+      // (issue-form-ids.js), which a field literally keyed `entry_<key>` would
+      // repeat. GitHub rejects a form with a repeated id.
+      if (field.form !== false) {
+        const id = issueFormId(key);
+        if (seenIds.has(id)) {
+          report.error(
+            `${path}.key`,
+            `"${key}" would share the issue-form id "${id}" with field ${seenIds.get(id) + 1}` +
+              ` ("${fields[seenIds.get(id)].key}" is renamed to "${id}" there, because GitHub reserves ` +
+              `"${fields[seenIds.get(id)].key}" for itself). Choose another key.`
+          );
+        } else {
+          seenIds.set(id, index);
+        }
+      }
     }
 
     if (!label) {
@@ -433,6 +454,17 @@ export function checkSchema(schema) {
 
     checkPresentation(field, path, type, groupKeys, report);
   });
+
+  // With no `title` field the generator adds a Title question of its own,
+  // under the id a `title` field would have had.
+  const titleId = issueFormId('title');
+  if (!seenKeys.has('title') && seenIds.has(titleId)) {
+    const index = seenIds.get(titleId);
+    report.error(
+      `fields[${index}].key`,
+      `"${titleId}" is the id of the Title question the issue form adds when the schema has no \`title\` field. Choose another key.`
+    );
+  }
 
   if (markdownCount > 1) {
     report.error(

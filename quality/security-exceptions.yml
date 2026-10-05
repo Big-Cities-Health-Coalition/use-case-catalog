@@ -1,12 +1,12 @@
 schema_version: 1
-exceptions: []
-# Replace the empty list only after the documented P2 approval. Example shape:
-# exceptions:
-#   - id: GHSA-xxxx-xxxx-xxxx
-#     ecosystem: npm
-#     package: exact-package-name
-#     severity: high
-#     priority: P2
-#     owner: "@accountable-maintainer"
-#     reason: "Tracking issue URL, mitigation, and why an immediate patch is unavailable."
-#     expires: 2026-09-01
+exceptions:
+  - id: GHSA-vfj7-8cjw-p6xm
+    ecosystem: npm
+    package: braces
+    severity: high
+    priority: P2
+    owner: "@crypticpy"
+    reason: "https://github.com/crypticpy/phct/issues/78 — no patched braces release exists (3.0.3 is the latest). It reaches the tree only through tailwindcss 3 at build time, and receives only the content globs in this repository's tailwind.config.js, never visitor or issue input. Remove when braces ships a fix or the site leaves Tailwind 3."
+    expires: 2026-12-31
+# Every record needs the documented P2 approval and a tracking issue; see
+# docs/supply-chain.md. The audit fails once a record expires or stops matching.

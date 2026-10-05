@@ -22,6 +22,7 @@ import {
   ROOT,
   buildShowcase,
   keepsLandingLink,
+  landingModules,
   loadPresets,
   normalizeRoot,
   preflight,
@@ -33,6 +34,11 @@ import {
 const presets = await loadPresets();
 
 /* ------------------------------------------------------- the emitted shapes */
+
+test('the landing switches off every module, including one site.yml does not name', () => {
+  assert.deepEqual(landingModules({ events: true }, ['events', 'status']), { events: false, status: false });
+  assert.deepEqual(landingModules(undefined, ['status']), { status: false });
+});
 
 test('normalizeRoot turns a baseurl into the prefix every showcase path is built on', () => {
   assert.equal(normalizeRoot(''), '');

@@ -18,7 +18,7 @@ body:
 
         What it is, who built it, and what it changed.
   - type: input
-    id: title
+    id: entry_title
     attributes:
       label: Title
       description: What is it called? Specific enough that someone scanning a list of names knows what it is.
@@ -513,7 +513,7 @@ body:
 
         Problem, approach, what it took, results and lessons.
   - type: textarea
-    id: body
+    id: entry_body
     attributes:
       label: Full write-up
       description: "What's the story? Markdown is supported. Suggested headings: Problem, Approach, Time and resources (data, staffing, cost), Results, Lessons learned, How to reuse."

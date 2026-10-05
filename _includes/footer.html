@@ -34,6 +34,18 @@
               <li><a class="footer-link transition hover:text-white hover:underline" href="{{ link.url | relative_url }}">{{ link.label }}</a></li>
             {% endif %}
           {% endfor %}
+          {%- comment -%}
+          The status page (module: status) gets its link here rather than from
+          `footer.links`, so a deployment whose site.yml predates the module (and so
+          has neither the toggle nor the link) still shows it. `== false`, not
+          truthiness: an absent toggle leaves the page built (_plugins/modules.rb).
+          Skipped when there is no repository to look submissions up in, and when
+          `footer.links` already carries a link to the page.
+          {%- endcomment -%}
+          {%- assign ft_status_listed = ft_cfg.footer.links | where: 'url', '/status/' | size -%}
+          {% if ft_cfg.modules.status != false and ft_status_listed == 0 and ft_cfg.github.repository and ft_cfg.github.repository != '' %}
+            <li><a class="footer-link transition hover:text-white hover:underline" href="{{ '/status/' | relative_url }}">{{ ft_cfg.status.link_label | default: 'Check a submission' }}</a></li>
+          {% endif %}
           {% if ft_cfg.github.repository and ft_cfg.github.repository != '' %}
             <li><a class="footer-link transition hover:text-white hover:underline" href="https://github.com/{{ ft_cfg.github.repository }}" target="_blank" rel="noopener noreferrer">Source on GitHub<span class="sr-only"> (opens in a new tab)</span></a></li>
           {% endif %}

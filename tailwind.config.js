@@ -23,6 +23,7 @@ export default {
     './events/**/*.{md,html}',
     './resources/**/*.{md,html}',
     './submit/**/*.{md,html}',
+    './status/**/*.{md,html}',
     './setup/**/*.{md,html}',
     './about/**/*.{md,html}',
     './governance/**/*.{md,html}',

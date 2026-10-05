@@ -90,6 +90,11 @@ runs Jekyll in Actions (not the legacy Pages builder, which disallows plugins).
   a required-only "short form" toggle); `assets/js/submit.js` orchestrates `submit/{fields,validate,
   repeatable,preview,draft,handoff,review,steps,shortform}.js` and hands off to a prefilled
   `new-entry.yml` issue. Without JavaScript it stays one long page.
+- `status/index.md` — "Check your submission" (module `status`): a number field whose
+  `assets/js/status-page.js` reads the issue from GitHub's public API in the browser and shows its
+  stage, worked out by the pure rules in `assets/js/lib/submission-status.js` from the issue's
+  `status:*` label (or its open/closed state when it has none). Read-only and unauthenticated;
+  when GitHub refuses or JavaScript is off it falls back to a plain link to the issue.
 
 Two Liquid gotchas govern the include style (details in `CLAUDE.md`): assigns inside an include
 leak into the caller, so every include prefixes its variables (`ec_`, `fv_`, `gal_` …); and include

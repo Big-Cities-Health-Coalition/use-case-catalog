@@ -12,7 +12,9 @@
  *
  * DOM contract: [data-review] (the container), [data-form-chrome] (parts of the
  * form hidden while the review is up), [data-review-next] (a <template> holding
- * the long "what happens next" copy, rendered by Liquid).
+ * the long "what happens next" copy, rendered by Liquid), [data-after-submit] (a
+ * <template> with the note on following a sent submission, cloned into the
+ * confirmation panel; absent when the site has no repository).
  *
  * Exposes: window.SubmitForm.renderReview, .renderConfirmation, .exitReview,
  *          .copyText
@@ -123,6 +125,13 @@
     const template = document.querySelector('[data-review-next]');
     if (!template || !template.content) return null;
     return el('div', { class: 'border-t border-brand-line px-6 py-5' }, [template.content.cloneNode(true)]);
+  }
+
+  /** The note on following the submission once it is sent, when the page has one. */
+  function afterSubmit() {
+    const template = document.querySelector('[data-after-submit]');
+    if (!template || !template.content) return null;
+    return el('div', { class: 'border-t border-brand-line px-6 py-4' }, [template.content.cloneNode(true)]);
   }
 
   /**
@@ -368,6 +377,7 @@
         ]),
       ]),
       el('div', { class: 'flex flex-wrap items-center gap-3 px-6 py-5' }, actions),
+      ...[afterSubmit()].filter(Boolean),
       el('div', { class: 'border-t border-brand-line px-6 py-4' }, [
         el('p', {
           class: 'text-sm text-brand-muted',

@@ -7,15 +7,78 @@ import * as jsYaml from 'js-yaml';
 
 import { issueTemplateFromSchema, groupedFormFields } from '../../assets/js/configurator/issue-template.js';
 import { defaultConfig } from '../../assets/js/configurator/default-config.js';
+import { FIELD_TYPES } from '../../assets/js/configurator/schema-validate.js';
+import '../../assets/js/configurator/issue-form-ids.js';
+
+const { issueFormId } = globalThis.PHCTIssueForm;
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TEMPLATE_PATH = '.github/ISSUE_TEMPLATE/new-entry.yml';
 
+// `shipped` is whatever this repository's _data/ holds: the template's own
+// configuration here, a deployment's in a copy. Tests against it must not name
+// a field key or rely on one existing; they iterate the schema, or find a field
+// by type. Behaviour that needs a particular field uses a small schema below.
 const shipped = defaultConfig();
+
+/** The form's controls by element id. */
+const controlsOf = (doc) => new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
+
+/** The fields the issue form asks, in the live schema. */
+const formFields = (schema = shipped.schema) => schema.fields.filter((field) => field.form !== false);
+
+/** The control each schema type becomes. */
+const CONTROL_FOR_TYPE = {
+  text: 'input',
+  url: 'input',
+  email: 'input',
+  date: 'input',
+  number: 'input',
+  textarea: 'textarea',
+  markdown: 'textarea',
+  list: 'textarea',
+  images: 'textarea',
+  links: 'textarea',
+  select: 'dropdown',
+  multiselect: 'dropdown',
+  boolean: 'dropdown',
+  file: 'upload',
+  image: 'upload',
+};
+
+/** One field of every schema type, each with options or a filename where it needs one. */
+const EVERY_TYPE = {
+  entry: { singular: 'Entry' },
+  fields: FIELD_TYPES.map((type) => ({
+    key: type === 'text' ? 'title' : `a_${type}`,
+    label: `A ${type}`,
+    type,
+    required: type === 'select' || type === 'multiselect',
+    ...(type === 'select' || type === 'multiselect' ? { options: ['One', 'Two, with a comma'] } : {}),
+    ...(type === 'file' ? { filename: 'deck.pdf' } : {}),
+  })),
+};
 
 /** The generated template, parsed. */
 function generate(schema = shipped.schema, site = shipped.site) {
   return jsYaml.load(issueTemplateFromSchema(schema, site));
+}
+
+/**
+ * All the help a control shows: its description, plus the markdown element just
+ * above it that carries whatever did not fit GitHub's 200-character limit
+ * (see test/configurator/issue-form-limits.test.mjs).
+ */
+function helpFor(doc, id) {
+  const index = doc.body.findIndex((item) => item.id === id);
+  const control = doc.body[index];
+  const above = doc.body[index - 1];
+  const overflow =
+    above?.type === 'markdown' &&
+    String(above.attributes.value).startsWith(`**${control.attributes.label}:** `)
+      ? String(above.attributes.value).slice(`**${control.attributes.label}:** `.length)
+      : '';
+  return [control.attributes.description ?? '', overflow].filter(Boolean).join(' ');
 }
 
 test('the committed issue template matches what the schema generates', () => {
@@ -28,12 +91,15 @@ test('the committed issue template matches what the schema generates', () => {
 });
 
 test('the template keeps its GitHub top-level keys', () => {
-  const doc = generate();
-  assert.deepEqual(Object.keys(doc), ['name', 'description', 'title', 'labels', 'body']);
+  assert.deepEqual(Object.keys(generate()), ['name', 'description', 'title', 'labels', 'body']);
+  const doc = generate(
+    { ...EVERY_TYPE, entry: { singular: 'Use case' } },
+    { submit: { intro: 'Share what you built.' } }
+  );
   assert.equal(doc.name, 'Submit a use case (creates PR)');
   assert.equal(doc.title, '[Use case] ');
   assert.deepEqual(doc.labels, ['content:new-entry']);
-  assert.equal(doc.description, shipped.site.submit.intro);
+  assert.equal(doc.description, 'Share what you built.');
 });
 
 test('the header names the generator and forbids hand-editing', () => {
@@ -42,86 +108,122 @@ test('the header names the generator and forbids hand-editing', () => {
   assert.match(text, /Generated from _data\/schema\.yml by scripts\/generate\.mjs — do not hand-edit\./);
 });
 
-test('every field becomes one control keyed by its schema key', () => {
-  const doc = generate();
-  const controls = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  for (const field of shipped.schema.fields) {
-    if (field.form === false) continue;
-    assert.ok(controls.has(field.key), `${field.key} has a control`);
+test('every field becomes one control, under its issue-form id, keeping its label', () => {
+  const controls = controlsOf(generate());
+  for (const field of formFields()) {
+    const id = issueFormId(field.key);
+    assert.ok(controls.has(id), `${field.key} has a control (id ${id})`);
+    assert.equal(controls.get(id).attributes.label, field.label, `${field.key} keeps its label verbatim`);
+  }
+});
+
+test('a key GitHub reads as its own parameter gets an entry_ id; every other key is its own id', () => {
+  // GitHub's new-issue page takes ?body= as the plain issue body and ?title= as
+  // the issue title, so a question with either id is never prefilled.
+  const doc = jsYaml.load(
+    issueTemplateFromSchema({
+      entry: { singular: 'Entry' },
+      fields: [
+        { key: 'title', label: 'Title', type: 'text', required: true },
+        { key: 'body', label: 'Write-up', type: 'markdown' },
+        { key: 'write_up', label: 'Notes', type: 'markdown' },
+        { key: 'labels', label: 'Tags', type: 'list' },
+      ],
+    })
+  );
+  const ids = doc.body.filter((item) => item.id).map((item) => item.id);
+  assert.deepEqual(ids, ['entry_title', 'entry_body', 'write_up', 'entry_labels']);
+  for (const key of ['title', 'body', 'labels', 'assignees', 'milestone', 'projects', 'template']) {
+    assert.equal(issueFormId(key), `entry_${key}`);
+  }
+  assert.equal(issueFormId('summary'), 'summary');
+});
+
+test('types map to the right GitHub controls', () => {
+  const controls = controlsOf(jsYaml.load(issueTemplateFromSchema(EVERY_TYPE)));
+  for (const field of EVERY_TYPE.fields) {
     assert.equal(
-      controls.get(field.key).attributes.label,
-      field.label,
-      `${field.key} keeps its label verbatim`
+      controls.get(issueFormId(field.key)).type,
+      CONTROL_FOR_TYPE[field.type],
+      `${field.type} control`
+    );
+  }
+  assert.equal(controls.get('a_multiselect').attributes.multiple, true, 'multiselect dropdowns are multiple');
+  assert.equal(controls.get('a_select').attributes.multiple, undefined);
+  assert.deepEqual(controls.get('a_boolean').attributes.options, ['Yes', 'No']);
+});
+
+test('the live schema maps every field type the same way', () => {
+  const controls = controlsOf(generate());
+  for (const field of formFields()) {
+    assert.equal(
+      controls.get(issueFormId(field.key)).type,
+      CONTROL_FOR_TYPE[field.type],
+      `${field.key} (${field.type})`
     );
   }
 });
 
-test('types map to the right GitHub controls', () => {
-  const doc = generate();
-  const byId = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  assert.equal(byId.get('title').type, 'input');
-  assert.equal(byId.get('summary').type, 'textarea');
-  assert.equal(byId.get('solution_type').type, 'dropdown', 'select -> dropdown');
-  assert.equal(byId.get('area').type, 'dropdown', 'multiselect -> multi dropdown');
-  assert.equal(byId.get('area').attributes.multiple, true, 'multiselect dropdowns are multiple');
-  assert.equal(byId.get('ai_tools').type, 'textarea', 'list -> textarea');
-  assert.equal(byId.get('screenshots').type, 'textarea', 'images -> textarea');
-  assert.equal(byId.get('resources').type, 'textarea', 'links -> textarea');
-  assert.equal(byId.get('body').type, 'textarea', 'markdown -> textarea');
-  assert.equal(byId.get('contact_email').type, 'input');
-  assert.equal(byId.get('deck_pdf').type, 'upload', 'file -> upload');
-});
-
 test('options are copied verbatim for both kinds of dropdown', () => {
-  const doc = generate();
-  const byId = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  const select = shipped.schema.fields.find((f) => f.key === 'solution_type');
-  assert.deepEqual(byId.get('solution_type').attributes.options, select.options);
-
-  // Plain strings, not `{label}` objects: that shape belongs to `checkboxes`,
-  // which this generator no longer emits.
-  const multi = shipped.schema.fields.find((f) => f.key === 'area');
-  assert.deepEqual(byId.get('area').attributes.options, multi.options);
+  const controls = controlsOf(generate());
+  for (const field of formFields().filter((f) => f.type === 'select' || f.type === 'multiselect')) {
+    // Plain strings, not `{label}` objects: that shape belongs to `checkboxes`,
+    // which this generator no longer emits.
+    assert.deepEqual(
+      controls.get(issueFormId(field.key)).attributes.options,
+      field.options.map(String),
+      field.key
+    );
+  }
 });
 
 test('an option label containing a comma survives verbatim', () => {
-  const doc = generate();
-  const byId = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  const withComma = byId.get('area').attributes.options.filter((option) => option.includes(','));
-  assert.ok(withComma.length > 0, 'the shipped schema has an option with a comma in it');
-  withComma.forEach((option) => {
+  const controls = controlsOf(jsYaml.load(issueTemplateFromSchema(EVERY_TYPE)));
+  for (const id of ['a_select', 'a_multiselect']) {
     assert.ok(
-      shipped.schema.fields.find((f) => f.key === 'area').options.includes(option),
-      'the comma is not split or escaped'
+      controls.get(id).attributes.options.includes('Two, with a comma'),
+      `${id}: the comma is not split or escaped`
     );
-  });
+  }
 });
 
 test('required is set from the schema on every control, multi-selects included', () => {
-  const doc = generate();
-  const byId = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  assert.equal(byId.get('title').validations.required, true);
-  assert.equal(byId.get('impact').validations.required, false);
-  // A multi-select dropdown can be required; the `checkboxes` control it
-  // replaced could not, and used to fake it with a line of description text.
-  assert.equal(byId.get('area').validations.required, true);
-  assert.doesNotMatch(byId.get('area').attributes.description, /Required — choose at least one/);
+  const controls = controlsOf(generate());
+  for (const field of formFields()) {
+    const control = controls.get(issueFormId(field.key));
+    assert.equal(control.validations.required, field.required === true, `${field.key} required`);
+    // A multi-select dropdown can be required; the `checkboxes` control it
+    // replaced could not, and used to fake it with a line of description text.
+    assert.doesNotMatch(String(control.attributes.description ?? ''), /Required — choose at least one/);
+  }
+  const multi = controlsOf(jsYaml.load(issueTemplateFromSchema(EVERY_TYPE))).get('a_multiselect');
+  assert.equal(multi.validations.required, true);
 });
 
 test('prompt comes before description in the help text', () => {
-  const doc = generate();
-  const summary = doc.body.find((item) => item.id === 'summary');
-  const field = shipped.schema.fields.find((f) => f.key === 'summary');
+  const field = {
+    key: 'summary',
+    label: 'Summary',
+    type: 'textarea',
+    prompt: 'What does it do',
+    description: 'Two sentences.',
+  };
+  const doc = jsYaml.load(
+    issueTemplateFromSchema({
+      entry: { singular: 'Entry' },
+      fields: [{ key: 'title', label: 'Title', type: 'text' }, field],
+    })
+  );
+  const summary = controlsOf(doc).get('summary');
   assert.ok(summary.attributes.description.startsWith(field.prompt), 'prompt first');
   assert.ok(summary.attributes.description.includes(field.description), 'description second');
 });
 
 test('images and links controls explain their line format', () => {
-  const doc = generate();
-  const byId = new Map(doc.body.filter((item) => item.id).map((item) => [item.id, item]));
-  assert.match(byId.get('screenshots').attributes.description, /one image URL per line/i);
-  assert.match(byId.get('screenshots').attributes.description, /alt text/i);
-  assert.match(byId.get('resources').attributes.description, /`Label \| URL`/);
+  const doc = jsYaml.load(issueTemplateFromSchema(EVERY_TYPE));
+  assert.match(helpFor(doc, 'a_images'), /one image URL per line/i);
+  assert.match(helpFor(doc, 'a_images'), /alt text/i);
+  assert.match(helpFor(doc, 'a_links'), /`Label \| URL`/);
 });
 
 test('groups become markdown separators in schema order', () => {
@@ -163,9 +265,9 @@ test('ungrouped fields land in a trailing "More" group', () => {
 });
 
 test('a file field is a real upload control that accepts its own extension', () => {
-  const doc = generate();
-  const deck = doc.body.find((item) => item.id === 'deck_pdf');
-  assert.ok(deck, 'the deck field is a control, not a paragraph telling someone to do it later');
+  const doc = jsYaml.load(issueTemplateFromSchema(EVERY_TYPE));
+  const deck = controlsOf(doc).get('a_file');
+  assert.ok(deck, 'the file field is a control, not a paragraph telling someone to do it later');
   assert.equal(deck.type, 'upload');
   assert.equal(deck.validations.accept, '.pdf', 'accept comes from the schema `filename`');
   assert.equal(deck.validations.required, false);
@@ -180,15 +282,14 @@ test('a file field is a real upload control that accepts its own extension', () 
 });
 
 test('a file field points past-the-cap files at the first links field the form asks', () => {
-  const doc = generate();
-  const deck = doc.body.find((item) => item.id === 'deck_pdf');
-  const linksField = shipped.schema.fields.find((field) => field.type === 'links' && field.form !== false);
-  assert.ok(linksField, 'the shipped schema has a links field on the form');
+  const doc = jsYaml.load(issueTemplateFromSchema(EVERY_TYPE));
+  const linksField = EVERY_TYPE.fields.find((field) => field.type === 'links');
+  const deckHelp = helpFor(doc, 'a_file');
   assert.ok(
-    deck.attributes.description.endsWith(
+    deckHelp.endsWith(
       `Over 25 MB, or kept in a shared workspace? Paste a link in “${linksField.label}” instead.`
     ),
-    deck.attributes.description
+    deckHelp
   );
 
   // A links field the form never shows is no place to send anyone, and a
@@ -256,8 +357,9 @@ test('a schema with no title field gets one synthesised', () => {
       fields: [{ key: 'note', label: 'Note', type: 'text' }],
     })
   );
-  const title = doc.body.find((item) => item.id === 'title');
+  const title = doc.body.find((item) => item.id === issueFormId('title'));
   assert.ok(title, 'a title input is always present');
+  assert.equal(title.id, 'entry_title', 'under the same id a schema `title` field would get');
   assert.equal(title.validations.required, true);
 });
 

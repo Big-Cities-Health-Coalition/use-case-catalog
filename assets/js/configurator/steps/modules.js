@@ -16,6 +16,8 @@ const MODULE_HELP = {
   resources: 'A separate curated resource library from _data/resources.yml.',
   governance:
     'A governance & policies page — review process, roles, licensing, privacy, accessibility — from _data/governance.yml. It ships as a worked example; removing the demo content switches it off until you have rewritten it.',
+  status:
+    'A "Check your submission" page where submitters type the number GitHub gave their submission and see how far it has got. Needs a public repository.',
 };
 
 /** @returns {{body: HTMLElement}} step 3 body. */

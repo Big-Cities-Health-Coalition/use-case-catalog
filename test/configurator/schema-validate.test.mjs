@@ -366,3 +366,55 @@ test('the shipped schema has no prompt/description stutter', () => {
     []
   );
 });
+
+test('a key GitHub reserves is fine on its own: the issue form gives it an entry_ id', () => {
+  for (const key of ['body', 'labels', 'assignees', 'milestone', 'projects', 'template']) {
+    const result = checkSchema(
+      schemaWith([{ key, label: `Field ${key}`, type: 'textarea', group: 'about' }])
+    );
+    assert.equal(result.ok, true, key);
+    assert.deepEqual(
+      result.warnings.filter((w) => w.path === 'fields[2].key'),
+      [],
+      `${key} needs no rename now that the form remaps it`
+    );
+  }
+});
+
+test("a key that repeats a reserved key's issue-form id is an error", () => {
+  const clash = checkSchema(
+    schemaWith([
+      { key: 'body', label: 'Write-up', type: 'markdown', group: 'about' },
+      { key: 'entry_body', label: 'Another', type: 'textarea', group: 'about' },
+    ])
+  );
+  assert.equal(clash.ok, false);
+  assert.deepEqual(
+    clash.errors.map((e) => e.path),
+    ['fields[3].key']
+  );
+  assert.match(clash.errors[0].message, /share the issue-form id "entry_body" with field 3/);
+
+  // A field the form never asks has no id to collide with.
+  const hidden = checkSchema(
+    schemaWith([
+      { key: 'body', label: 'Write-up', type: 'markdown', group: 'about', form: false },
+      { key: 'entry_body', label: 'Another', type: 'textarea', group: 'about' },
+    ])
+  );
+  assert.equal(hidden.ok, true);
+});
+
+test('entry_title clashes with the Title question the form adds when there is no title field', () => {
+  const schema = schemaWith([{ key: 'entry_title', label: 'Name', type: 'text', group: 'about' }]);
+  schema.fields = schema.fields.filter((field) => field.key !== 'title');
+  const result = checkSchema(schema);
+  assert.deepEqual(
+    result.errors.filter((e) => /entry_title/.test(e.message)).map((e) => e.path),
+    ['fields[1].key']
+  );
+  assert.equal(
+    checkSchema(schemaWith([{ key: 'entry_title', label: 'Name', type: 'text', group: 'about' }])).ok,
+    false
+  );
+});
