@@ -163,13 +163,14 @@ submit:
   intro: "…"               # shown above the form
   turnaround: "…"           # the last step of "what happens next": what happens after a maintainer picks it up
   review_note: "…"          # safety callout beside the form, and the first block of the GitHub issue form
-  fallback_email: "…"       # the "Email it instead" button
+  fallback_email: "…"       # the "Email it instead" button; false turns email submissions off
 ```
 
 `accepting: false` replaces the form with a "Submissions are paused" notice — using
 `closed_message` and `closed_image` when set — while keeping the page and its nav link, so
 bookmarks and inbound links keep working during a review freeze. The email route
-(`fallback_email`, or `organization.contact_email`) stays offered. A `site.yml` without the
+(`fallback_email`, or `organization.contact_email`) stays offered unless
+`fallback_email` is `false`. A `site.yml` without the
 key keeps accepting: only an explicit `false` pauses.
 
 `turnaround` is a promise printed on the submission page and repeated in the
@@ -178,7 +179,11 @@ weeks" beats "within 48 hours" you will miss.
 
 The "Email it instead" button only renders when there is an address to send to:
 `submit.fallback_email`, or `organization.contact_email` when that is blank.
-Clear both to drop the button and send everyone through GitHub.
+To send everyone through GitHub while keeping the contact email, set
+`fallback_email: false` (unquoted; the string `"false"` is an address). That
+removes every email route from `/submit/`: the button, the `mailto:` links, the
+"Email the maintainers" line on the paused notice and the sentences that point
+at *Email it instead*. Clearing both keys does the same.
 
 The shape of the form follows the schema, with nothing to configure here: when
 `schema.groups` has more than one group the form opens as one step per group

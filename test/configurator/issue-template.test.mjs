@@ -39,9 +39,11 @@ const CONTROL_FOR_TYPE = {
   list: 'textarea',
   images: 'textarea',
   links: 'textarea',
-  select: 'dropdown',
-  multiselect: 'dropdown',
-  boolean: 'dropdown',
+  // Text inputs, not dropdowns: GitHub prefills only text fields from the
+  // query string, so a dropdown dropped every answer /submit/ carried.
+  select: 'input',
+  multiselect: 'input',
+  boolean: 'input',
   file: 'upload',
   image: 'upload',
 };
@@ -148,9 +150,10 @@ test('types map to the right GitHub controls', () => {
       `${field.type} control`
     );
   }
-  assert.equal(controls.get('a_multiselect').attributes.multiple, true, 'multiselect dropdowns are multiple');
-  assert.equal(controls.get('a_select').attributes.multiple, undefined);
-  assert.deepEqual(controls.get('a_boolean').attributes.options, ['Yes', 'No']);
+  for (const id of ['a_select', 'a_multiselect', 'a_boolean']) {
+    assert.equal(controls.get(id).attributes.options, undefined, `${id} carries no dropdown options`);
+    assert.equal(controls.get(id).attributes.multiple, undefined, `${id} is not a multi-select`);
+  }
 });
 
 test('the live schema maps every field type the same way', () => {
@@ -164,27 +167,64 @@ test('the live schema maps every field type the same way', () => {
   }
 });
 
-test('options are copied verbatim for both kinds of dropdown', () => {
-  const controls = controlsOf(generate());
+test('options are named verbatim in the help of both kinds of choice', () => {
+  const doc = generate();
   for (const field of formFields().filter((f) => f.type === 'select' || f.type === 'multiselect')) {
-    // Plain strings, not `{label}` objects: that shape belongs to `checkboxes`,
-    // which this generator no longer emits.
-    assert.deepEqual(
-      controls.get(issueFormId(field.key)).attributes.options,
-      field.options.map(String),
-      field.key
-    );
+    const help = helpFor(doc, issueFormId(field.key));
+    for (const option of field.options.map(String)) {
+      assert.ok(help.includes(`\`${option}\``), `${field.key}: "${option}" is named in the help`);
+    }
   }
 });
 
 test('an option label containing a comma survives verbatim', () => {
-  const controls = controlsOf(jsYaml.load(issueTemplateFromSchema(EVERY_TYPE)));
+  const doc = jsYaml.load(issueTemplateFromSchema(EVERY_TYPE));
   for (const id of ['a_select', 'a_multiselect']) {
-    assert.ok(
-      controls.get(id).attributes.options.includes('Two, with a comma'),
-      `${id}: the comma is not split or escaped`
-    );
+    assert.ok(helpFor(doc, id).includes('`Two, with a comma`'), `${id}: the comma is not split or escaped`);
   }
+});
+
+test('the help says how to answer each kind of choice', () => {
+  const doc = jsYaml.load(issueTemplateFromSchema(EVERY_TYPE));
+  assert.match(helpFor(doc, 'a_select'), /^Type one of: `One`, `Two, with a comma`\.$/);
+  assert.match(
+    helpFor(doc, 'a_multiselect'),
+    /^Type one or more, separated by commas: `One`, `Two, with a comma`\.$/
+  );
+  // /submit/ sends a ticked box as "Yes" and an unticked one not at all.
+  assert.match(helpFor(doc, 'a_boolean'), /^Type Yes to confirm, or leave it blank\.$/);
+  const required = jsYaml.load(
+    issueTemplateFromSchema({
+      entry: { singular: 'Entry' },
+      fields: [
+        { key: 'title', label: 'Title', type: 'text' },
+        { key: 'ok', label: 'I confirm', type: 'boolean', required: true },
+      ],
+    })
+  );
+  assert.match(helpFor(required, 'ok'), /^Type Yes to confirm\.$/);
+});
+
+test('a choice question with many options still fits GitHub’s description limit', () => {
+  const options = Array.from({ length: 30 }, (_, i) => `Option number ${i + 1}`);
+  const doc = jsYaml.load(
+    issueTemplateFromSchema({
+      entry: { singular: 'Entry' },
+      fields: [
+        { key: 'title', label: 'Title', type: 'text' },
+        { key: 'many', label: 'Many', type: 'multiselect', description: 'Pick what applies.', options },
+      ],
+    })
+  );
+  const control = controlsOf(doc).get('many');
+  assert.equal(
+    control.attributes.description,
+    'Pick what applies.',
+    'the schema description stays under the label'
+  );
+  const help = helpFor(doc, 'many');
+  for (const option of options)
+    assert.ok(help.includes(`\`${option}\``), `${option} moves above the field, not away`);
 });
 
 test('required is set from the schema on every control, multi-selects included', () => {
@@ -192,8 +232,8 @@ test('required is set from the schema on every control, multi-selects included',
   for (const field of formFields()) {
     const control = controls.get(issueFormId(field.key));
     assert.equal(control.validations.required, field.required === true, `${field.key} required`);
-    // A multi-select dropdown can be required; the `checkboxes` control it
-    // replaced could not, and used to fake it with a line of description text.
+    // A multi-select question can be required; the `checkboxes` control it
+    // once was could not, and used to fake it with a line of description text.
     assert.doesNotMatch(String(control.attributes.description ?? ''), /Required — choose at least one/);
   }
   const multi = controlsOf(jsYaml.load(issueTemplateFromSchema(EVERY_TYPE))).get('a_multiselect');

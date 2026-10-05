@@ -17,8 +17,20 @@ concurrency:
   group: supply-chain-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
+# A content-only pull request (a submission; see content-only.yml) skips the
+# audit: it changes no dependency.
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
   audit:
+    needs: changes
+    # Skipped (reported as passed) on a content-only change; see
+    # content-only.yml. `!cancelled()` keeps a failed classification from
+    # skipping it.
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -67,7 +79,7 @@ jobs:
   status:
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [audit]
+    needs: [changes, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -79,7 +91,10 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const passed = ${{ toJSON(needs.audit.result) }} === 'success';
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const result = ${{ toJSON(needs.audit.result) }};
+            const skipped = contentOnly && result === 'skipped';
+            const passed = result === 'success' || skipped;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -87,5 +102,9 @@ jobs:
               state: passed ? 'success' : 'failure',
               context: 'Supply chain (dispatch)',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              description: passed ? 'Dependency and SBOM gates passed' : 'Supply-chain gates reported problems',
+              description: skipped
+                ? 'Skipped: content-only change'
+                : passed
+                  ? 'Dependency and SBOM gates passed'
+                  : 'Supply-chain gates reported problems',
             });

@@ -16,9 +16,21 @@ concurrency:
   group: codeql-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
+# A content-only pull request (a submission; see content-only.yml) skips the
+# analysis. The skip is per step, not per job: a job-level `if:` is evaluated
+# before the matrix is applied, so a skipped job would never report the
+# required "Analyze javascript-typescript" and "Analyze ruby" contexts.
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
   analyze:
     name: Analyze ${{ matrix.language }}
+    needs: changes
+    # Runs even when the classification failed; the steps then run too.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -29,12 +41,18 @@ jobs:
       matrix:
         language: [javascript-typescript, ruby]
     steps:
+      - name: Skip the analysis of a content-only change
+        if: needs.changes.outputs.content_only == 'true'
+        run: echo "Content-only change, so the CodeQL analysis was skipped." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout repository
+        if: needs.changes.outputs.content_only != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Initialize CodeQL
+        if: needs.changes.outputs.content_only != 'true'
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: ${{ matrix.language }}
@@ -42,6 +60,7 @@ jobs:
           queries: security-extended
 
       - name: Analyze repository
+        if: needs.changes.outputs.content_only != 'true'
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: /language:${{ matrix.language }}
@@ -49,7 +68,7 @@ jobs:
   status:
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [analyze]
+    needs: [changes, analyze]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -61,7 +80,12 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const passed = ${{ toJSON(needs.analyze.result) }} === 'success';
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const result = ${{ toJSON(needs.analyze.result) }};
+            // The analysis skips by step, so a content-only run normally
+            // succeeds; the skipped case is kept for parity with the others.
+            const skipped = contentOnly && result === 'skipped';
+            const passed = result === 'success' || skipped;
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             // A reusable-workflow dispatch prefixes matrix check names with the
             // caller job. Publish the same canonical contexts as a normal PR so
@@ -78,6 +102,10 @@ jobs:
                 state: passed ? 'success' : 'failure',
                 context: statusContext,
                 target_url: targetUrl,
-                description: passed ? 'CodeQL passed' : 'CodeQL reported problems',
+                description: contentOnly && passed
+                  ? 'Skipped: content-only change'
+                  : passed
+                    ? 'CodeQL passed'
+                    : 'CodeQL reported problems',
               });
             }

@@ -42,6 +42,36 @@ const TYPE_GUIDANCE = {
   image: 'Attach the image here and the automation commits it with the entry.',
 };
 
+/** Field types asked as a single-line text input that takes the answer as typed text. */
+const CHOICE_TYPES = new Set(['select', 'multiselect', 'boolean']);
+
+/**
+ * How to answer a choice question in words, since the issue form asks it as a
+ * text input. GitHub prefills only text fields (`input`, `textarea`) from the
+ * query string — a `dropdown` opened empty and every answer /submit/ carried
+ * was lost — so these questions are typed, and this says what to type: the
+ * exact option text /submit/ sends, a multiselect's answers joined by commas
+ * as it sends them, and a boolean's "Yes". The scaffolder matches the text back
+ * onto the options leniently (scripts/lib/issue_body.mjs, `coerceChoice`).
+ *
+ * @param {object} field
+ * @param {string} type
+ * @returns {string} '' for a select or multiselect without options
+ */
+function choiceGuidance(field, type) {
+  if (type === 'boolean') {
+    return field.required === true ? 'Type Yes to confirm.' : 'Type Yes to confirm, or leave it blank.';
+  }
+  const options = (Array.isArray(field.options) ? field.options : [])
+    .map((option) => String(option))
+    .filter((option) => option.trim() !== '');
+  if (options.length === 0) return '';
+  const named = options.map((option) => `\`${option}\``).join(', ');
+  return type === 'multiselect'
+    ? `Type one or more, separated by commas: ${named}.`
+    : `Type one of: ${named}.`;
+}
+
 function capitalizeFirst(str) {
   const s = String(str ?? '').trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -131,7 +161,7 @@ function fieldHelp(field, type, context) {
   const { text, overflow } = fitHelp([
     { text: field.prompt, rank: 1 },
     { text: field.description, rank: 2 },
-    { text: TYPE_GUIDANCE[type], rank: 0 },
+    { text: CHOICE_TYPES.has(type) ? choiceGuidance(field, type) : TYPE_GUIDANCE[type], rank: 0 },
     { text: type === 'file' ? context.fileHint : '', rank: 0 },
   ]);
   return { description: text.length >= DESCRIPTION_MIN ? text : '', overflow };
@@ -185,29 +215,16 @@ function controlFor(field, context = {}) {
     item.type = 'textarea';
     if (placeholder.includes('\n')) attributes.value = placeholder;
     else if (placeholder.trim()) attributes.placeholder = placeholder;
-  } else if (type === 'multiselect') {
-    // A multi-select dropdown, not `checkboxes`: GitHub can prefill a dropdown
-    // from the query string and enforce `validations.required` on it, and can
-    // do neither for checkboxes. The cost is that `option_meta.description`
-    // has nowhere to live in the raw GitHub form — the web form still shows it.
-    item.type = 'dropdown';
-    attributes.multiple = true;
-    attributes.options = (Array.isArray(field.options) ? field.options : [])
-      .map((option) => String(option))
-      .filter((option) => option.trim() !== '');
-  } else if (type === 'select') {
-    item.type = 'dropdown';
-    attributes.options = (Array.isArray(field.options) ? field.options : [])
-      .map((option) => String(option))
-      .filter((option) => option.trim() !== '');
-  } else if (type === 'boolean') {
-    item.type = 'dropdown';
-    attributes.options = ['Yes', 'No'];
+  } else if (CHOICE_TYPES.has(type)) {
+    // A text input, not a dropdown: GitHub prefills a dropdown from nothing,
+    // so /submit/'s answer was dropped and a required one blocked the Create
+    // button. The help names the answers (choiceGuidance); the schema's
+    // `option_meta` descriptions live on this site's own form.
   } else if (placeholder.trim()) {
     attributes.placeholder = placeholder;
   }
 
-  // Every control this generator emits (input, textarea, dropdown) accepts
+  // Every control this generator emits (input, textarea) accepts
   // `validations`. GitHub only enforces it on public repositories, so the web
   // form's own validation stays the first line of defence.
   item.validations = { required };

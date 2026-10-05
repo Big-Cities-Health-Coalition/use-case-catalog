@@ -25,8 +25,20 @@ on:
 
 permissions: {}
 
+# A content-only pull request (a submission; see content-only.yml) changes no
+# workflow, so `lint` is skipped there; skipped by `if:`, it reports as passed.
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
   lint:
+    needs: changes
+    # Skipped (reported as passed) on a content-only change; see
+    # content-only.yml. `!cancelled()` keeps a failed classification from
+    # skipping it.
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -59,7 +71,7 @@ jobs:
     # on the dispatched branch head so protected-main requirements can resolve.
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [lint]
+    needs: [changes, lint]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -71,7 +83,10 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const passed = ${{ toJSON(needs.lint.result) }} === 'success';
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const result = ${{ toJSON(needs.lint.result) }};
+            const skipped = contentOnly && result === 'skipped';
+            const passed = result === 'success' || skipped;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -79,5 +94,9 @@ jobs:
               state: passed ? 'success' : 'failure',
               context: 'lint',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              description: passed ? 'Workflow lint passed' : 'Workflow lint reported problems',
+              description: skipped
+                ? 'Skipped: content-only change'
+                : passed
+                  ? 'Workflow lint passed'
+                  : 'Workflow lint reported problems',
             });

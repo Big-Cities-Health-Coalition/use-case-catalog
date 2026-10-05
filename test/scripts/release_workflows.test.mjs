@@ -347,7 +347,10 @@ test('a built-in-token update dispatches stable entrypoints that fan out to ever
     assert.match(validate, new RegExp(`uses: \\.\\/.github/workflows/${name.replace('.', '\\.')}`, 'u'));
     assert.match(workflow(name), /workflow_call:/u, `${name} cannot be called by validate.yml`);
   }
-  assert.match(validate, /needs: \[checks, build-matrix, coverage, performance, supply-chain, codeql\]/u);
+  assert.match(
+    validate,
+    /needs: \[changes, content, checks, build-matrix, coverage, performance, supply-chain, codeql\]/u
+  );
 });
 
 test('the updater retries transient check-dispatch failures before reporting success', () => {

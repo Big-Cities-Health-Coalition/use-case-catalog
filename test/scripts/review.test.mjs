@@ -116,6 +116,30 @@ test('the checklist carries the closer-review block only when something was flag
   assert.doesNotMatch(loud, /uploaded into/, 'no entry directory, no upload line');
 });
 
+test('answers that matched no option are listed for the reviewer to fix', () => {
+  assert.doesNotMatch(reviewChecklist({}), /Answers to fix/);
+  const md = reviewChecklist({
+    escalations: [{ reason: '**Data it touches**: Health information (PHI)' }],
+    unmatched: [
+      { key: 'stage', label: 'Stage', values: ['Pilott'] },
+      { key: 'area', label: 'Area of work', values: ['Space travel', '@someone `x`', 'a\nb'] },
+    ],
+  });
+  assert.match(md, /^### Answers to fix$/m);
+  assert.match(md, /left out of the front matter/);
+  assert.match(md, /^- \[ \] \*\*Stage\*\* \(`stage`\): `Pilott`$/m);
+  // Submitter text is a code span (no @-mention fires), on one line.
+  assert.match(md, /^- \[ \] \*\*Area of work\*\* \(`area`\): `Space travel`, `@someone 'x'`, `a b`$/m);
+  const order = ['### Closer review', '### Answers to fix', '### Maintainer checklist'].map((h) =>
+    md.indexOf(h)
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => a - b),
+    order,
+    'closer review, then answers to fix, then the checklist'
+  );
+});
+
 test('the criteria are the site’s when it publishes them and the generic five otherwise', () => {
   const generic = reviewChecklist({});
   for (const { name } of DEFAULT_CRITERIA)

@@ -25,66 +25,41 @@ body:
       placeholder: Nightly lab-result pipeline for surveillance
     validations:
       required: true
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Type of solution:** Type one or more, separated by commas: `AI/ML model`, `Generative AI tool`, `Data pipeline or integration`, `Analysis project or script`, `Dashboard or visualization`, `Application or software`, `Data platform or infrastructure`, `Workflow automation`, `Standards, governance or playbook`."
+  - type: input
     id: solution_type
     attributes:
       label: Type of solution
       description: What kind of solution is it? Select all that fit. A dashboard fed by a new pipeline is both.
-      multiple: true
-      options:
-        - AI/ML model
-        - Generative AI tool
-        - Data pipeline or integration
-        - Analysis project or script
-        - Dashboard or visualization
-        - Application or software
-        - Data platform or infrastructure
-        - Workflow automation
-        - "Standards, governance or playbook"
     validations:
       required: true
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**AI use category:** Type one of: `Administrative & task automation`, `Communications, media & writing`, `Coding & brainstorming`, `Operations & logistics`."
+  - type: input
     id: use_case_category
     attributes:
       label: AI use category
       description: "If it involves AI, which of the four coalition categories fits best? For AI work only: the HHS-adapted categories the DMWG AI inventory uses. Leave it blank if no AI is involved."
-      options:
-        - "Administrative & task automation"
-        - "Communications, media & writing"
-        - "Coding & brainstorming"
-        - "Operations & logistics"
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Public health area:** Type one or more, separated by commas: `Communicable disease`, `Chronic disease and injury prevention`, `Environmental health`, `Maternal, child and family health`, `Access to and linkage with care`, `Emergency preparedness and response`, `Epidemiology and surveillance`, `Vital records and health statistics`, `Communications and community engagement`, `Data modernization and informatics`, `Agency operations and administration`."
+  - type: input
     id: area
     attributes:
       label: Public health area
       description: Which public health areas does it serve? Select all that fit. The first five follow the program areas of the Foundational Public Health Services; the rest are the capabilities every program relies on.
-      multiple: true
-      options:
-        - Communicable disease
-        - Chronic disease and injury prevention
-        - Environmental health
-        - "Maternal, child and family health"
-        - Access to and linkage with care
-        - Emergency preparedness and response
-        - Epidemiology and surveillance
-        - Vital records and health statistics
-        - Communications and community engagement
-        - Data modernization and informatics
-        - Agency operations and administration
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: stage
     attributes:
       label: Stage
-      description: "How far along is it? Pick the stage that matches real use, not the plan."
-      options:
-        - Idea / exploring
-        - Pilot
-        - In production
-        - Paused or retired
+      description: "How far along is it? Pick the stage that matches real use, not the plan. Type one of: `Idea / exploring`, `Pilot`, `In production`, `Paused or retired`."
     validations:
       required: true
   - type: textarea
@@ -117,35 +92,21 @@ body:
         ### How it's built
 
         The tools and technologies behind it, any AI involved, and where it runs.
-  - type: dropdown
+  - type: input
     id: ai_role
     attributes:
       label: Role of AI
-      description: "What part, if any, does AI play? Most digital work involves no AI, and that is a fine answer."
-      options:
-        - No AI
-        - AI is part of the solution
-        - AI helped build it
-        - Both
+      description: "What part, if any, does AI play? Most digital work involves no AI, and that is a fine answer. Type one of: `No AI`, `AI is part of the solution`, `AI helped build it`, `Both`."
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Types of AI:** Type one or more, separated by commas: `Generative text (LLM)`, `Chat assistant`, `Document Q&A (RAG)`, `Classification & NLP`, `Prediction & forecasting`, `Computer vision`, `Speech & transcription`, `Translation`, `Agents & automation`, `Rules-based (no ML)`."
+  - type: input
     id: ai_types
     attributes:
       label: Types of AI
       description: "If AI is involved, what kinds? Select all that apply. Skip it when there is no AI."
-      multiple: true
-      options:
-        - Generative text (LLM)
-        - Chat assistant
-        - "Document Q&A (RAG)"
-        - "Classification & NLP"
-        - "Prediction & forecasting"
-        - Computer vision
-        - "Speech & transcription"
-        - Translation
-        - "Agents & automation"
-        - Rules-based (no ML)
     validations:
       required: false
   - type: textarea
@@ -156,21 +117,14 @@ body:
       placeholder: "R, Python, SAS, SQL Server, Power BI, FHIR, Azure OpenAI"
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Where it runs:** Type one or more, separated by commas: `AWS`, `Microsoft Azure`, `Google Cloud`, `On-premises`, `Vendor / SaaS hosted`, `Enterprise AI workspace`, `Low-code platform`, `Desktop or local`."
+  - type: input
     id: platform
     attributes:
       label: Where it runs
       description: Where does it run? Select all that apply.
-      multiple: true
-      options:
-        - AWS
-        - Microsoft Azure
-        - Google Cloud
-        - On-premises
-        - Vendor / SaaS hosted
-        - Enterprise AI workspace
-        - Low-code platform
-        - Desktop or local
     validations:
       required: false
   - type: input
@@ -187,34 +141,24 @@ body:
         ### Reuse
 
         What it would take for another team to use this.
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Skills needed to set it up:** Type one of: `Anyone on staff`, `Power user`, `Analyst or data scientist`, `Developer`, `Contractor or vendor`."
+  - type: input
     id: expertise
     attributes:
       label: Skills needed to set it up
       description: "Who is the least technical person who could get this running? Judge it by setting the thing up, not by using it afterwards."
-      options:
-        - Anyone on staff
-        - Power user
-        - Analyst or data scientist
-        - Developer
-        - Contractor or vendor
     validations:
       required: true
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Readiness:** Type one or more, separated by commas: `Ready to deploy`, `Guided setup`, `Needs customization`, `Needs a contractor`, `Needs a paid license`, `Needs a data agreement`, `Human review built in`, `Reference only`."
+  - type: input
     id: readiness
     attributes:
       label: Readiness
       description: What would another team need before they could use this? Select all that apply.
-      multiple: true
-      options:
-        - Ready to deploy
-        - Guided setup
-        - Needs customization
-        - Needs a contractor
-        - Needs a paid license
-        - Needs a data agreement
-        - Human review built in
-        - Reference only
     validations:
       required: false
   - type: input
@@ -270,31 +214,24 @@ body:
         ### Sharing & licensing
 
         What another health department can get from you, on what terms, and how portable it is.
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**What's shared:** Type one of: `Open-source code`, `Code on request`, `Templates or documentation only`, `Description only`."
+  - type: input
     id: sharing
     attributes:
       label: "What's shared"
       description: What can another health department get from you? Code is optional. A clear account of what you built and what it took is worth sharing on its own.
-      options:
-        - Open-source code
-        - Code on request
-        - Templates or documentation only
-        - Description only
     validations:
       required: true
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**License:** Type one of: `MIT`, `Apache 2.0`, `GPL / AGPL`, `Creative Commons (CC BY / CC0)`, `Other open license`, `Not open source — available on request`, `Not open source — description only`."
+  - type: input
     id: license
     attributes:
       label: License
       description: "Under what license is it shared? Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship."
-      options:
-        - MIT
-        - Apache 2.0
-        - GPL / AGPL
-        - Creative Commons (CC BY / CC0)
-        - Other open license
-        - Not open source — available on request
-        - Not open source — description only
     validations:
       required: false
   - type: textarea
@@ -305,15 +242,14 @@ body:
       placeholder: Available to other health departments under a data-sharing agreement — email the contact below.
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Portable to other platforms:** Type one of: `Yes — platform-agnostic`, `Partially — with rework`, `No — tied to its platform`."
+  - type: input
     id: portability
     attributes:
       label: Portable to other platforms
       description: "Could it be adapted outside its original vendor ecosystem? Microsoft-built but portable to AWS is 'partially'."
-      options:
-        - Yes — platform-agnostic
-        - Partially — with rework
-        - No — tied to its platform
     validations:
       required: true
   - type: textarea
@@ -338,68 +274,44 @@ body:
         ### What it took
 
         Money, contracting and approvals — the part a budget or governance conversation needs.
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Cost to stand up:** Type one of: `No new spend`, `Under $25k`, `$25k–$100k`, `$100k–$500k`, `Over $500k`, `Not disclosed`."
+  - type: input
     id: cost_band
     attributes:
       label: Cost to stand up
       description: "Roughly what did it cost to get it running the first time? One-time cost: contracts, build, implementation. A band is fine — nobody expects an exact figure."
-      options:
-        - No new spend
-        - Under $25k
-        - $25k–$100k
-        - $100k–$500k
-        - Over $500k
-        - Not disclosed
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Cost to keep running:** Type one of: `No ongoing cost`, `Under $10k/yr`, `$10k–$50k/yr`, `Over $50k/yr`, `Not disclosed`."
+  - type: input
     id: run_cost
     attributes:
       label: Cost to keep running
       description: "What does a normal year cost to run? Licences, hosting and usage charges only — staff time belongs in the write-up."
-      options:
-        - No ongoing cost
-        - Under $10k/yr
-        - $10k–$50k/yr
-        - Over $50k/yr
-        - Not disclosed
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**How it was bought:** Type one or more, separated by commas: `No procurement needed`, `Existing enterprise licence`, `Cooperative or piggyback contract`, `Competitive solicitation`, `Sole source`, `Grant funded`, `Interagency agreement`, `In-kind or academic partnership`."
+  - type: input
     id: procurement
     attributes:
       label: How it was bought
       description: How was this paid for or contracted? Select all that apply. This is the question peers ask most and the one that is hardest to find out.
-      multiple: true
-      options:
-        - No procurement needed
-        - Existing enterprise licence
-        - Cooperative or piggyback contract
-        - Competitive solicitation
-        - Sole source
-        - Grant funded
-        - Interagency agreement
-        - In-kind or academic partnership
     validations:
       required: false
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Reviews it went through:** Type one or more, separated by commas: `Privacy review`, `Security review or authority to operate`, `Legal or contracts review`, `Records retention review`, `Labor or workforce consultation`, `Community or advisory review`, `Equity impact assessment`, `Research ethics / IRB`, `AI governance body`, `None required`, `Not yet reviewed`."
+  - type: input
     id: approvals
     attributes:
       label: Reviews it went through
       description: "Which internal reviews or approvals did it need? Select all that apply. Saying 'not yet reviewed' is more useful to a peer than leaving it blank."
-      multiple: true
-      options:
-        - Privacy review
-        - Security review or authority to operate
-        - Legal or contracts review
-        - Records retention review
-        - Labor or workforce consultation
-        - Community or advisory review
-        - Equity impact assessment
-        - Research ethics / IRB
-        - AI governance body
-        - None required
-        - Not yet reviewed
     validations:
       required: false
   - type: textarea
@@ -416,29 +328,24 @@ body:
         ### Data & access
 
         What data it touches and who sees the output.
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**No PII/PHI in the shared material:** Type Yes to confirm."
+  - type: input
     id: no_pii_attestation
     attributes:
       label: No PII/PHI in the shared material
       description: "Do you confirm that no personal or protected health information appears in the resource, its documentation, example data or screenshots? Reviewers spot-check. If the answer is no, redact first."
-      options:
-        - "Yes"
-        - "No"
     validations:
       required: true
-  - type: dropdown
+  - type: markdown
+    attributes:
+      value: "**Data it touches:** Type one or more, separated by commas: `Public data only`, `De-identified data`, `Internal, non-public data`, `Personal information (PII)`, `Health information (PHI)`, `Criminal justice data (CJIS)`."
+  - type: input
     id: data_sensitivity
     attributes:
       label: Data it touches
       description: What kind of data does it touch? Select all that apply. This helps others judge governance and approval effort.
-      multiple: true
-      options:
-        - Public data only
-        - De-identified data
-        - "Internal, non-public data"
-        - Personal information (PII)
-        - Health information (PHI)
-        - Criminal justice data (CJIS)
     validations:
       required: true
   - type: textarea
@@ -449,15 +356,11 @@ body:
       placeholder: "Electronic lab reports (ELR), immunization registry, ESSENCE"
     validations:
       required: false
-  - type: dropdown
+  - type: input
     id: audience
     attributes:
       label: Who sees the output
-      description: Who sees the output? Pick the widest group that sees anything it produces.
-      options:
-        - Public-facing
-        - Internal staff
-        - Partner organizations
+      description: "Who sees the output? Pick the widest group that sees anything it produces. Type one of: `Public-facing`, `Internal staff`, `Partner organizations`."
     validations:
       required: true
   - type: textarea
