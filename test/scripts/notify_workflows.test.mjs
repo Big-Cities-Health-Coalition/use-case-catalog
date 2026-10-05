@@ -18,6 +18,8 @@ import {
   MAINTAINER_ASSOCIATIONS,
   NOTIFY_LABELS,
   REVIEW_LABELS,
+  STATUS,
+  stageDecision,
 } from '../../scripts/lib/notify.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -315,4 +317,35 @@ test('create-pull-request only builds branches that are new on every run', () =>
       `${script} must name a new branch every run`
     );
   }
+});
+
+test('an "also deployed by" draft is declined by closing the pull request, not the issue, as the admin guide says', () => {
+  // Nothing runs when an issue is closed, so closing one moves no status.
+  for (const name of fs.readdirSync(DIR).filter((file) => file.endsWith('.yml'))) {
+    const types = parse(name).on?.issues?.types ?? [];
+    assert.ok(!types.includes('closed'), `${name} runs when an issue is closed`);
+  }
+  // Closing the draft unmerged is the decline (submission-status.yml).
+  const repository = { full_name: 'acme/catalog' };
+  const decision = stageDecision('pull_request', {
+    action: 'closed',
+    sender: { type: 'User' },
+    repository,
+    pull_request: {
+      body: 'Closes #41',
+      html_url: 'https://github.com/acme/catalog/pull/50',
+      merged: false,
+      state: 'closed',
+      labels: [{ name: 'content:also-deployed-by' }],
+      head: { repo: repository },
+    },
+  });
+  assert.equal(decision.status, STATUS.declined);
+  assert.equal(decision.close, true);
+
+  const guide = fs.readFileSync(path.join(ROOT, 'docs', 'admin-guide.md'), 'utf8');
+  const section = /^## "Also deployed by" submissions\n([\s\S]*?)^## /m.exec(guide)?.[1] ?? '';
+  assert.ok(section, 'docs/admin-guide.md has no "Also deployed by" section');
+  assert.match(section, /Decline by closing the pull request without merging/);
+  assert.doesNotMatch(section, /Decline by closing the issue/);
 });

@@ -35,6 +35,7 @@ import {
   NO_RESPONSE,
   codeSpan,
   coerce,
+  coerceChoice,
   parseAttachmentRef,
   parseImageRefs,
   parseIssueForm,
@@ -293,6 +294,10 @@ const entries = [
 
 let bodyText = '';
 
+/** Choice answers that named no option: kept out of the front matter (a value
+ * outside `options` fails `npm run validate`) and listed for the reviewer. */
+const unmatchedAnswers = [];
+
 for (const field of fields) {
   const key = String(field.key ?? '');
   if (!key) continue;
@@ -310,6 +315,15 @@ for (const field of fields) {
   }
   if (field.type === 'file' || field.type === 'image') {
     entries.push([key, attachmentValues[key] ?? '']);
+    continue;
+  }
+  // Select, multiselect and boolean questions are text inputs on the issue form
+  // (GitHub prefills nothing else from /submit/), so the answer is typed text,
+  // matched onto the schema's options here.
+  if (field.type === 'select' || field.type === 'multiselect' || field.type === 'boolean') {
+    const { value, unmatched } = coerceChoice(field, raw);
+    if (unmatched.length > 0) unmatchedAnswers.push({ key, label: field.label || key, values: unmatched });
+    entries.push([key, value]);
     continue;
   }
   entries.push([key, coerce(field, raw)]);
@@ -355,6 +369,7 @@ const checklist = reviewChecklist({
   criteria: publishedCriteria(),
   status: { key: statusKey, start: statusStart, approved: schema.entry?.status_approved_value },
   escalations: flagged,
+  unmatched: unmatchedAnswers,
   entryDir: `${entryPath}/${slug}`,
 });
 
@@ -433,6 +448,16 @@ if (savedAttachments.length > 0) {
 }
 if (flagged.length > 0) {
   summaryLines.push('', '### Closer review', ...flagged.map((item) => `- ${item.reason}`));
+}
+if (unmatchedAnswers.length > 0) {
+  summaryLines.push(
+    '',
+    '### Answers to fix',
+    ...unmatchedAnswers.map(
+      (item) =>
+        `- **${item.label}** (\`${item.key}\`): ${item.values.map((value) => codeSpan(value.replace(/\s+/g, ' '))).join(', ')}`
+    )
+  );
 }
 summaryLines.push(
   '',

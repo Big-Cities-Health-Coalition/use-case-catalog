@@ -27,8 +27,21 @@ concurrency:
   group: performance-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
+# A content-only pull request (a submission; see content-only.yml) skips the
+# scale run. `scale` is a required context: a job skipped by `if:` reports as
+# passed, so it still resolves.
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
   scale:
+    needs: changes
+    # Skipped (reported as passed) on a content-only change; see
+    # content-only.yml. `!cancelled()` keeps a failed classification from
+    # skipping it.
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -100,7 +113,7 @@ jobs:
   status:
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [scale]
+    needs: [changes, scale]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -112,7 +125,10 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const passed = ${{ toJSON(needs.scale.result) }} === 'success';
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const result = ${{ toJSON(needs.scale.result) }};
+            const skipped = contentOnly && result === 'skipped';
+            const passed = result === 'success' || skipped;
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             // Match the canonical PR check name as well as the human-readable
             // dispatch summary so required checks work for generated PRs.
@@ -124,6 +140,10 @@ jobs:
                 state: passed ? 'success' : 'failure',
                 context: statusContext,
                 target_url: targetUrl,
-                description: passed ? 'Scale budgets passed' : 'Scale budgets reported problems',
+                description: skipped
+                  ? 'Skipped: content-only change'
+                  : passed
+                    ? 'Scale budgets passed'
+                    : 'Scale budgets reported problems',
               });
             }

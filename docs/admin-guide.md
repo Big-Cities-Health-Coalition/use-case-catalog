@@ -74,7 +74,7 @@ The rules you are applying are published on the site's **Governance** page (`/go
    - If scaffolding fails (e.g. missing title, duplicate slug), the workflow comments the error back on the issue instead of opening a PR. Editing the issue to fix the problem re-triggers the workflow (it also runs on `issues: edited`).
    - Once you have committed to the draft branch (or pressed **Update branch**), an edit to the issue no longer rebuilds it, because that would erase your commits. You get a comment on the draft listing which answers changed, before and after, and the submitter is told their edit reached you.
 3. Any images the submitter dropped into the issue are downloaded into the entry folder by the same workflow (see [Screenshots and images](#screenshots-and-images) below), so the pull request already contains the pictures — you review them, you do not have to fetch them.
-4. On the pull request, work through the checklist below. The pull request body already carries a **Maintainer checklist** — the review criteria from `_data/governance.yml` (the same list the governance page shows; a generic five when the site publishes none), the mechanics, and the review-status flip — and, when an answer matched a field's `escalate_on` list in the schema, a **Closer review** block above it naming the field and the answer (the shipped schema flags an unticked PII/PHI attestation, PII/PHI/CJIS under *Data it touches*, and a *Public-facing* audience). Those pull requests also carry the `review:data-governance` label, so you can see from the list which ones are not a five-minute intake.
+4. On the pull request, work through the checklist below. The pull request body already carries a **Maintainer checklist** — the review criteria from `_data/governance.yml` (the same list the governance page shows; a generic five when the site publishes none), the mechanics, and the review-status flip — and, when an answer matched a field's `escalate_on` list in the schema, a **Closer review** block above it naming the field and the answer (the shipped schema flags an unticked PII/PHI attestation, PII/PHI/CJIS under *Data it touches*, and a *Public-facing* audience). Those pull requests also carry the `review:data-governance` label, so you can see from the list which ones are not a five-minute intake. Choice questions (select, multiselect, yes/no) are typed answers on the GitHub form, because GitHub only prefills text fields from `/submit/`'s link. An answer that matches none of the field's options is left out of the front matter and listed under **Answers to fix**, with a box to tick: set the field to the option the submitter meant before merging (see [choice questions on the issue form](content-model.md#choice-questions-on-the-issue-form)). **Validate Content** stays red while a required one is empty.
 5. Set the review status. The scaffold wrote `review_status: "Under review"`; before merging set it to `Reviewed & approved` (the schema names both values: `entry.status_scaffold_value`, `entry.status_approved_value`). If the entry needs changes, leave the pull request open with `review:revisions-requested` (or submit a review that requests changes) and say specifically what to change. The submitter gets an email pointing at your notes and explaining how to update; they edit the issue or reply on the pull request, and it comes back round.
 6. Merge. The `Build & Deploy` workflow runs on every push to `main` and republishes the site, usually within a couple of minutes. Once it has deployed, the automation comments the published URL back on the issue the submission came from ("Your entry is now live at …"), so the submitter hears the outcome without you writing anything. That comment is best-effort: if it does not appear, nothing is wrong with the deploy.
 
@@ -146,7 +146,7 @@ Links
 
 Mechanics
 
-- [ ] The **Validate Content** check is green (`check_front_matter.rb`, `check_file_sizes.rb` and the image-derivatives check).
+- [ ] The **Content: entries and site build** check is green (`check_front_matter.rb`, `check_file_sizes.rb`, the image-derivatives check and the site build). The other checks show as skipped on a submission; see [which checks a submission runs](#which-checks-a-submission-runs).
 - [ ] If a slide deck was promised, it has been uploaded into `catalog/<slug>/` as `deck.pdf`.
 - [ ] The maintainer checklist in the pull request body is complete. (Generated PRs carry their own checklist; `.github/PULL_REQUEST_TEMPLATE.md` is the one hand-opened PRs get.)
 
@@ -166,6 +166,20 @@ The template handles this without a token: after opening the pull request, each 
 3. Add it as a repository secret named `CONTENT_BOT_TOKEN` (Settings → Secrets and variables → Actions → Secrets).
 
 Give it a short expiry and re-issue it on a calendar reminder; the workflows fall back to `GITHUB_TOKEN` and the dispatch path the moment the secret is absent, so an expired token degrades rather than breaks. The token's user becomes the author of every content commit, so use a machine account if you would rather that not be a person's name. [SECURITY.md](../SECURITY.md) covers the trust this delegates.
+
+### Which checks a submission runs
+
+A pull request that changes only entry content runs one check: **Content: entries and site build** (part of **Validate Content**). Entry content means files inside an entry's folder (`catalog/<slug>/`, or your schema's `entry.path`) of the kinds a submission produces: `index.md`, screenshots and their AVIF/WebP versions, PDFs and thumbnails, plus `_data/derivatives.json`. Every pull request the submission, refresh and *also deployed by* workflows open is one of these.
+
+Every other check (lint, unit tests, coverage, the preset builds, Quality, Supply chain, CodeQL, Performance and scale, workflow lint) shows as *skipped* on that pull request. Skipped is not a problem: GitHub counts a skipped check as passed, so it never blocks the merge. A pull request that touches anything else, even one file, runs every check as before, and so does every PHCT update.
+
+A red **Content: entries and site build** is about the entry, never about the code. Open it and read the first failing step:
+
+- **Validate data files, front matter and file sizes**: the entry breaks a rule in the schema. The log names the file and the field, for example a required field that is empty, a choice that is not one of the options, or a file that is too large. Fix the entry in the pull request.
+- **Image derivatives are in sync**: an image is missing its smaller versions. See [Screenshots and images](#screenshots-and-images).
+- **Run Jekyll doctor and build the production site** or **Check built links**: the site does not build, or a link on the new page is broken.
+
+The check runs on every pull request, so it can be made required. Add **Content: entries and site build** to the branch ruleset's required checks: until you do, a red content check is visible but does not stop the merge button.
 
 ### PHCT updates use a separate token
 
@@ -278,7 +292,7 @@ The whole diff is one list in one entry's front matter. What to check before you
 - [ ] **The note reads as information, not promotion.** One or two sentences about what they adapted, or would warn the next team about, is the point; a vendor pitch is not.
 - [ ] **The diff is that one list and nothing else.**
 
-Decline by closing the issue with a sentence about why — the submitter gets the notification, and nothing about the entry has changed. Nothing reaches the site until you merge. Setting `SUBMISSIONS_OPEN` to `false` stops outside submissions becoming pull requests at all; the issue gets a comment saying a maintainer will add it by hand.
+Decline by closing the pull request without merging, with a sentence about why on the pull request. The automation then comments on the submitter's issue, pointing at your reason, marks it `status:declined` and closes it as not planned ([What the submitter is told](#what-the-submitter-is-told)), and nothing about the entry has changed. Closing only the issue is not a decline: the pull request stays open, the status stays `status:in-review`, and merging it later would still publish the listing. Nothing reaches the site until you merge. Setting `SUBMISSIONS_OPEN` to `false` stops outside submissions becoming pull requests at all; the issue gets a comment saying a maintainer will add it by hand.
 
 A maintainer can always do it by hand instead — the field is an ordinary [`links` list](content-model.md#links) whose items may carry the optional `email` and `note` keys:
 

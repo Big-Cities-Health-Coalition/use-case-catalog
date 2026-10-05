@@ -6,6 +6,12 @@
 # ships four presets and three optional modules, and CI only ever built one
 # combination of them. See scripts/build_variants.mjs.
 #
+# `content` is the content check: entry front matter, data files and image
+# derivatives, then the production build and its links. It runs on every pull
+# request. A content-only pull request (a submission: only entry files, see
+# content-only.yml) runs nothing else here; the code jobs are skipped with
+# `if:`, which GitHub reports as passed for their required contexts.
+#
 # Runs on pull requests and on `workflow_dispatch` for any ref — a dispatch is
 # how a fork re-runs the gate on a branch (`gh workflow run validate.yml --ref
 # <branch>`). That dispatch also calls the candidate branch's Performance,
@@ -30,8 +36,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
+  # The one check a submission's pull request runs. Never gated: it answers "is
+  # the entry valid and does the site build with it?" for every change.
+  content:
+    name: "Content: entries and site build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          bundler-cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Validate data files, front matter and file sizes
+        run: npm run validate
+
+      - name: Image derivatives are in sync
+        run: node scripts/derive_images.mjs --check
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Run Jekyll doctor and build the production site
+        run: npm run build:release
+
+      - name: Check built links, assets, anchors, sitemap, feed, and JSON
+        run: npm run links:check
+
   checks:
     name: Lint, test and build
+    needs: changes
+    # Skipped (reported as passed) on a content-only change. `!cancelled()`
+    # keeps a failed classification from skipping it.
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -99,6 +159,8 @@ jobs:
 
   build-matrix:
     name: Build every preset and module combination
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -136,6 +198,8 @@ jobs:
 
   coverage:
     name: Coverage evidence
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -206,7 +270,7 @@ jobs:
     # instead. `statuses: write` is scoped to this job and nothing else.
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [checks, build-matrix, coverage, performance, supply-chain, codeql]
+    needs: [changes, content, checks, build-matrix, coverage, performance, supply-chain, codeql]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -219,12 +283,19 @@ jobs:
         with:
           script: |
             const jobs = ${{ toJSON(needs) }};
+            // A content-only change skips the code jobs on purpose; only then
+            // does "skipped" count as passed. A skip for any other reason (a
+            // cancelled run) still fails.
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const passed = (result) => result === 'success' || (contentOnly && result === 'skipped');
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             // workflow_dispatch check runs are not attached to a generated PR.
-            // Publish the exact contexts protected-main requires for the three
-            // jobs owned by this workflow; delegated CodeQL and scale workflows
-            // publish their own canonical contexts.
+            // Publish the exact contexts protected-main requires for the jobs
+            // owned by this workflow, plus the content check, which is what a
+            // reviewer reads on a submission; delegated CodeQL and scale
+            // workflows publish their own canonical contexts.
             const requiredContexts = [
+              ['content', 'Content: entries and site build'],
               ['checks', 'Lint, test and build'],
               ['build-matrix', 'Build every preset and module combination'],
               ['coverage', 'Coverage evidence'],
@@ -235,14 +306,19 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: context.sha,
-                state: result === 'success' ? 'success' : 'failure',
+                state: passed(result) ? 'success' : 'failure',
                 context: statusContext,
                 target_url: targetUrl,
-                description: result === 'success' ? `${statusContext} passed` : `${statusContext}: ${result}`,
+                description:
+                  result === 'success'
+                    ? `${statusContext} passed`
+                    : passed(result)
+                      ? 'Skipped: content-only change'
+                      : `${statusContext}: ${result}`,
               });
             }
 
-            const failed = Object.entries(jobs).filter(([, job]) => job.result !== 'success');
+            const failed = Object.entries(jobs).filter(([, job]) => !passed(job.result));
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,

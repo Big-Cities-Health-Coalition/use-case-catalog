@@ -835,6 +835,74 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
     }
   );
 
+  /* ------------------------------------------------- the email submission route */
+
+  /** Every email route /submit/ offers, read off <main> (templates and <noscript> included). */
+  function emailRoutes(siteDir) {
+    const main = page(siteDir, 'submit').querySelector('main');
+    const html = main.innerHTML;
+    return {
+      address: main.querySelector('form[data-submit-form]').getAttribute('data-fallback-email'),
+      button: Boolean(main.querySelector('[data-action="email"]')),
+      mailto: /href="mailto:/.test(html),
+      mentioned: /email it instead/i.test(html),
+    };
+  }
+
+  test(
+    'all-modules: /submit/ offers "Email it instead" to submit.fallback_email',
+    { skip: needs('all-modules') },
+    () => {
+      // Not the shipped variant: a deployment may switch email off in its own site.yml.
+      const { dir, siteDir } = built.get('all-modules');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(
+        site.submit.fallback_email,
+        'submissions@example.org',
+        'precondition: the variant sets it'
+      );
+      assert.deepEqual(emailRoutes(siteDir), {
+        address: site.submit.fallback_email,
+        button: true,
+        mailto: true,
+        mentioned: true,
+      });
+    }
+  );
+
+  test(
+    'legacy-font-names: a blank submit.fallback_email still falls back to organization.contact_email',
+    { skip: needs('legacy-font-names') },
+    () => {
+      const { dir, siteDir } = built.get('legacy-font-names');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(site.submit.fallback_email, '', 'precondition: the variant blanks submit.fallback_email');
+      assert.ok(site.organization.contact_email, 'precondition: organization.contact_email is set');
+      assert.deepEqual(emailRoutes(siteDir), {
+        address: site.organization.contact_email,
+        button: true,
+        mailto: true,
+        mentioned: true,
+      });
+    }
+  );
+
+  test(
+    'shipped-empty: submit.fallback_email: false turns every email route off, even with a contact email',
+    { skip: needs('shipped-empty') },
+    () => {
+      const { dir, siteDir } = built.get('shipped-empty');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(
+        site.submit.fallback_email,
+        false,
+        'precondition: the variant sets submit.fallback_email: false'
+      );
+      assert.ok(site.organization.contact_email, 'precondition: organization.contact_email is still set');
+      assert.deepEqual(emailRoutes(siteDir), { address: '', button: false, mailto: false, mentioned: false });
+    }
+  );
+
   test(
     'legacy-font-names: a site.yml with no status key still builds /status/ and links to it',
     { skip: needs('legacy-font-names') },

@@ -8,6 +8,83 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.4] — 2026-10-05
+
+Fourth candidate. rc.3's live BCHC update stopped before opening a pull request
+on a test that read the template's sample issue; #86 fixes it and a second test
+that would have failed once a deployment switched email submission off. This candidate also runs
+only the content check on a submission's pull request (#87).
+
+### Changed
+
+- A submission's pull request now runs only the content check. Every code
+  check used to run on it as well (lint, unit and Ruby tests, coverage, the
+  preset build matrix, Quality, Supply chain, CodeQL, Performance and scale,
+  workflow lint), so a reviewer could meet a red code check that said nothing
+  about the entry, and a missing required field showed up inside **Lint, test
+  and build**. A pull request whose every changed file is entry content (inside
+  `<entry.path>/<slug>/`, of a type a submission produces, or
+  `_data/derivatives.json`) now runs **Content: entries and site build**, a new
+  job in **Validate Content** that validates the front matter and data files,
+  checks the image derivatives, builds the site and checks its links. The code
+  jobs are skipped with `if:`, which GitHub counts as passed, so required checks
+  never wait; the bots' dispatched runs follow the same rule and post the
+  content check as a commit status. A pull request that touches any other file,
+  including every PHCT update, runs everything as before. The rule lives in
+  `scripts/lib/content_only.mjs` and the shared `content-only.yml` job; see
+  [which checks a submission runs](docs/admin-guide.md#which-checks-a-submission-runs).
+  Add **Content: entries and site build** to your branch ruleset's required
+  checks so a red content check blocks the merge.
+
+### Fixed
+
+- rc.3's live BCHC update stopped before opening a pull request: a new test
+  checked the old dropdown rendering against the template's sample issue, whose
+  questions differ from a deployment's own schema. The test now builds that
+  issue from the repository's schema, so it runs the same check anywhere.
+- The build test for `/submit/`'s email route read the deployment's own
+  `site.yml`, so a deployment that sets `submit.fallback_email: false` would
+  fail its next update. It now runs on a build variant that sets its own address.
+
+## [1.11.0-rc.3] — 2026-10-05
+
+Third candidate. rc.2 went live in BCHC, where a practice run showed `/submit/`
+losing every dropdown answer on the way to GitHub.
+
+### Fixed
+
+- Every submission sent from `/submit/` lost its select, multiselect and
+  yes/no answers. The page carries each answer to GitHub in the issue link, but
+  GitHub prefills only an issue form's text fields from a link, and the
+  generated `new-entry.yml` asked those questions as dropdowns, so they opened
+  empty. The submitter had to pick them all again, and a required one blocked
+  *Submit new issue* until they did. They are now single-line text inputs that
+  arrive filled in. The field's help (or a note above it when the list is long)
+  says what to type: the options, a multiselect's options separated by commas,
+  **Yes** for a yes/no question. The scaffolder maps typed answers onto the
+  schema's options regardless of case or spacing, keeps an option that contains
+  a comma whole, and still reads issues filed with the old dropdown form. An
+  answer that matches no option is left out of the front matter rather than
+  failing **Validate Content**, and the pull request lists it under a new
+  **Answers to fix** block for the maintainer. On `/submit/`, an `image`
+  question (an upload on GitHub, so it cannot be prefilled either) is now
+  listed under the answers to bring across by hand. Deployments get the fix
+  through the PHCT updater: its pull request regenerates `new-entry.yml` from
+  your schema. Nothing in the schema or existing entries changes.
+- A deployment that kept `organization.contact_email` had no way to turn off
+  the "Email it instead" route on `/submit/`. A blank `submit.fallback_email`
+  falls back to the contact email, and so did `false`, because Liquid's
+  `default` treats `false` as empty. `submit.fallback_email: false` now removes
+  every email route from the page: the button, the `mailto:` links, the "Email
+  the maintainers" line on the paused notice, and the sentences that point at
+  *Email it instead*. A blank or missing value works as before.
+- The admin guide said to decline an "also deployed by" submission by closing
+  the issue. Nothing runs when an issue is closed, so that left the pull
+  request open, the status at `status:in-review`, and the listing one merge
+  away from the site. The guide now says to close the pull request without
+  merging. That is the decline: the submitter gets the comment on their issue,
+  the status becomes `status:declined`, and the issue is closed as not planned.
+
 ## [1.11.0-rc.2] — 2026-10-05
 
 Second candidate. rc.1's live BCHC update stopped before opening a pull request
@@ -1419,7 +1496,9 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...HEAD
+[1.11.0-rc.4]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.3...v1.11.0-rc.4
+[1.11.0-rc.3]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...v1.11.0-rc.3
 [1.11.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.1...v1.11.0-rc.2
 [1.11.0-rc.1]: https://github.com/crypticpy/phct/compare/v1.10.0...v1.11.0-rc.1
 [1.10.0]: https://github.com/crypticpy/phct/compare/v1.10.0-rc.2...v1.10.0

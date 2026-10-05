@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   codeSpan,
   coerce,
+  coerceChoice,
   hostOf,
   isHttpUrl,
   normalizeLabel,
@@ -220,6 +221,109 @@ test('parseBoolean accepts the shapes GitHub can produce', () => {
   assert.equal(parseBoolean(''), false);
 });
 
+// The issue form asks select, multiselect and boolean questions as single-line
+// text inputs, because GitHub prefills only text fields from the query string
+// (a dropdown arrived empty, losing every /submit/ answer). What comes back is
+// whatever was typed — /submit/'s exact option text, or a hand-typed answer —
+// so it is matched onto the schema's options leniently, and anything that is
+// not an option is reported instead of reaching the front matter.
+const STAGES = ['Idea / exploring', 'Pilot', 'In production'];
+const AREAS = ['Finance, procurement & contracts', 'Communications & outreach', 'Data & informatics'];
+
+test('a select answer typed as text maps onto its option, whatever the case or spacing', () => {
+  const field = { type: 'select', options: STAGES };
+  for (const raw of ['Pilot', 'pilot', '  PILOT ', '`Pilot`', '"Pilot"', 'Pilot.']) {
+    assert.deepEqual(coerceChoice(field, raw), { value: 'Pilot', unmatched: [] }, raw);
+    assert.equal(coerce(field, raw), 'Pilot', raw);
+  }
+  assert.deepEqual(coerceChoice(field, 'idea  /  EXPLORING'), { value: 'Idea / exploring', unmatched: [] });
+});
+
+test('a select answer that is not an option is dropped and reported, never written', () => {
+  const field = { type: 'select', options: STAGES };
+  assert.deepEqual(coerceChoice(field, 'Pilott'), { value: '', unmatched: ['Pilott'] });
+  assert.equal(coerce(field, 'Pilott'), '');
+  // Two answers to a one-answer question are not an option either.
+  assert.deepEqual(coerceChoice(field, 'Pilot, In production'), {
+    value: '',
+    unmatched: ['Pilot, In production'],
+  });
+});
+
+test('a blank or "None" choice answer is no answer, not an unrecognised one', () => {
+  const fields = [
+    { type: 'select', options: STAGES },
+    { type: 'multiselect', options: AREAS },
+    { type: 'boolean' },
+  ];
+  for (const field of fields) {
+    // `None` is what a dropdown shows when nothing is picked; old issues carry it.
+    for (const raw of ['', 'None', 'none', '_No response_']) {
+      assert.deepEqual(coerceChoice(field, raw).unmatched, [], `${field.type} ${JSON.stringify(raw)}`);
+    }
+  }
+  assert.equal(coerce(fields[0], 'None'), '');
+  assert.deepEqual(coerce(fields[1], 'None'), []);
+  assert.equal(coerce(fields[2], 'None'), false);
+  // An option that really is called "None" is still an answer.
+  assert.equal(coerce({ type: 'select', options: ['None', 'Some'] }, 'none'), 'None');
+});
+
+test('multiselect text splits on commas without breaking an option that contains one', () => {
+  const field = { type: 'multiselect', options: AREAS };
+  // What /submit/ sends, and what GitHub's multi-select dropdown rendered.
+  assert.deepEqual(coerceChoice(field, AREAS.join(', ')), { value: AREAS, unmatched: [] });
+  // Typed by hand: any case, no space after a comma, semicolons, one per line.
+  assert.deepEqual(coerceChoice(field, 'finance, procurement & contracts,DATA & INFORMATICS'), {
+    value: ['Finance, procurement & contracts', 'Data & informatics'],
+    unmatched: [],
+  });
+  assert.deepEqual(coerce(field, 'Data & informatics; communications & outreach'), [
+    'Data & informatics',
+    'Communications & outreach',
+  ]);
+  assert.deepEqual(coerce(field, '- Data & informatics\n- `Finance, procurement & contracts`'), [
+    'Data & informatics',
+    'Finance, procurement & contracts',
+  ]);
+  // The old `checkboxes` rendering still parses.
+  assert.deepEqual(coerce(field, '- [x] Finance, procurement & contracts\n- [ ] Data & informatics'), [
+    'Finance, procurement & contracts',
+  ]);
+  // Repeats collapse.
+  assert.deepEqual(coerce(field, 'Data & informatics, data & informatics'), ['Data & informatics']);
+});
+
+test('a multiselect value that is not an option is dropped and reported; the rest are kept', () => {
+  const field = { type: 'multiselect', options: AREAS };
+  assert.deepEqual(coerceChoice(field, 'Data & informatics, Finance, Space travel'), {
+    value: ['Data & informatics'],
+    unmatched: ['Finance', 'Space travel'],
+  });
+  // The start of an option's text is not that option.
+  assert.deepEqual(coerceChoice({ type: 'multiselect', options: ['AWS', 'Azure'] }, 'AWSome, azure'), {
+    value: ['Azure'],
+    unmatched: ['AWSome'],
+  });
+  // A multiselect with no options is a free list: everything is kept.
+  assert.deepEqual(coerceChoice({ type: 'multiselect' }, 'Alpha, Beta'), {
+    value: ['Alpha', 'Beta'],
+    unmatched: [],
+  });
+});
+
+test('a boolean typed as text reads yes and no in any case, and reports anything else', () => {
+  const field = { type: 'boolean' };
+  for (const raw of ['Yes', 'yes', 'YES', 'y', 'true', 'x', 'Yes.', '- [x] I confirm']) {
+    assert.deepEqual(coerceChoice(field, raw), { value: true, unmatched: [] }, raw);
+  }
+  for (const raw of ['No', 'no', 'false', '', '- [ ] I confirm']) {
+    assert.deepEqual(coerceChoice(field, raw), { value: false, unmatched: [] }, raw);
+  }
+  assert.deepEqual(coerceChoice(field, 'Maybe'), { value: false, unmatched: ['Maybe'] });
+  assert.equal(coerce(field, 'YES'), true);
+});
+
 test('parseLinks understands pipe, dash, markdown and bare URLs', () => {
   const sections = parseSections(basic, LABELS);
   assert.deepEqual(parseLinks(sections.get('other resources')), [
@@ -357,4 +461,12 @@ test('coerce maps each schema type to its front matter shape', () => {
   assert.equal(coerce({ type: 'text' }, '  hi  '), 'hi');
   assert.equal(coerce({ type: 'markdown' }, 'x'), null);
   assert.equal(coerce({ type: 'images' }, 'x'), null);
+});
+
+test('coerceChoice strips wrapping quotes, and a long run of quotes stays fast', () => {
+  const field = { type: 'select', options: ['Pilot', 'In production'] };
+  assert.deepEqual(coerceChoice(field, '"Pilot".'), { value: 'Pilot', unmatched: [] });
+  const started = Date.now();
+  coerceChoice(field, `a${'"'.repeat(65000)}a`);
+  assert.ok(Date.now() - started < 500, 'quote stripping is linear');
 });

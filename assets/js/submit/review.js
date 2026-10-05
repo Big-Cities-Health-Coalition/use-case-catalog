@@ -164,10 +164,10 @@
   }
 
   /**
-   * The answers that GitHub's issue form cannot be handed through the URL.
-   * Empty today — every control the generator emits is prefillable — but the
-   * moment a field goes back to `checkboxes` this is the block that stops the
-   * submitter losing the answer without noticing.
+   * The answers that GitHub's issue form cannot be handed through the URL:
+   * an `image` question, which is an `upload` on GitHub (submit/index.md marks
+   * it data-prefill="false"). Every other question is a text field there and
+   * travels; this block stops the submitter losing the rest without noticing.
    * @param {object[]} fields
    * @returns {HTMLElement|null}
    */
