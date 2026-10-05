@@ -77,7 +77,7 @@ export const SITE = {
     ]
   },
   "submit": {
-    "intro": "Share a digital tool, data project or AI use case with the coalition. Code is optional: a clear description of what you built and what it took is enough. Submissions open a GitHub issue for the maintainers to review, and nothing is published until it is approved.",
+    "intro": "Share a digital tool, data project or AI use case with the coalition. Code is optional: a clear description of what you built and what it took is enough. Nothing is published until it is approved.",
     "turnaround": "Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share.",
     "review_note": "Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content.",
     "fallback_email": "info@bigcitieshealth.org"
@@ -897,7 +897,7 @@ export const SCHEMA = {
       "group": "reuse",
       "weight": 7,
       "icon": "image",
-      "description": "Up to eight PNG, JPEG, GIF or WebP images of the tool in use (15 MB total). Make sure no personal or protected information is visible."
+      "description": "Up to eight images, 15 MB total. No personal information visible."
     },
     {
       "key": "deck_pdf",
@@ -908,8 +908,7 @@ export const SCHEMA = {
       "thumbnail": true,
       "group": "reuse",
       "weight": 8,
-      "icon": "presentation",
-      "description": "Attach the slide deck here. A thumbnail is generated from its first page."
+      "icon": "presentation"
     },
     {
       "key": "also_deployed_by",
@@ -972,7 +971,7 @@ export const SCHEMA = {
           "description": "The write-up is what is shared, not the artifact itself."
         }
       },
-      "description": "Optional when nothing but a description is shared. For code and documents the coalition default is a permissive open license (MIT, Apache 2.0, CC BY). Submitting does not transfer ownership; your organization keeps authorship."
+      "description": "Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship."
     },
     {
       "key": "access_terms",
@@ -1037,7 +1036,7 @@ export const SCHEMA = {
       "links_entries": true,
       "search": false,
       "placeholder": "overdose-spike-brief",
-      "description": "Name the source by its slug — the last part of its URL. The entry you name will say it was adopted by yours."
+      "description": "Name it by its slug, the last part of its URL. That entry will show it was adopted by yours."
     },
     {
       "key": "cost_band",
@@ -1230,7 +1229,7 @@ export const SCHEMA = {
       "escalate_on": [
         false
       ],
-      "description": "The coalition's baseline for anything published here. Reviewers spot-check; if the answer is no, redact before submitting."
+      "description": "Reviewers spot-check. If the answer is no, redact first."
     },
     {
       "key": "data_sensitivity",
@@ -1427,7 +1426,7 @@ export const SCHEMA = {
       "weight": 4,
       "search": false,
       "placeholder": "jordan-lee",
-      "description": "Used once a year: when this entry is due to be re-confirmed the reminder mentions you, so the request reaches the person who wrote it. Leave it blank and the reminder goes to the maintainers alone."
+      "description": "Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only."
     },
     {
       "key": "body",

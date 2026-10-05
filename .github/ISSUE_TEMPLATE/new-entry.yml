@@ -3,7 +3,7 @@
 # Regenerate with `npm run generate` after changing _data/schema.yml.
 
 name: Submit a use case (creates PR)
-description: "Share a digital tool, data project or AI use case with the coalition. Code is optional: a clear description of what you built and what it took is enough. Submissions open a GitHub issue for the maintainers to review, and nothing is published until it is approved."
+description: "Share a digital tool, data project or AI use case with the coalition. Code is optional: a clear description of what you built and what it took is enough. Nothing is published until it is approved."
 title: "[Use case] "
 labels:
   - "content:new-entry"
@@ -253,14 +253,14 @@ body:
     id: screenshots
     attributes:
       label: Screenshots
-      description: "Screenshots of it in use. Up to eight PNG, JPEG, GIF or WebP images of the tool in use (15 MB total). Make sure no personal or protected information is visible. Drag images into this box to upload them, or paste one image URL per line — optionally as `URL | alt text`."
+      description: "Screenshots of it in use. Up to eight images, 15 MB total. No personal information visible. Drag images into this box to upload them, or paste one image URL per line — optionally as `URL | alt text`."
     validations:
       required: false
   - type: upload
     id: deck_pdf
     attributes:
       label: Slide deck or one-pager (PDF)
-      description: "Slide deck or one-pager. Attach the slide deck here. A thumbnail is generated from its first page. Attach the file here and the automation commits it with the entry. Over 25 MB, or kept in a shared workspace? Paste a link in “Other resources” instead."
+      description: "Slide deck or one-pager. Attach the file here and the automation commits it with the entry. Over 25 MB, or kept in a shared workspace? Paste a link in “Other resources” instead."
     validations:
       required: false
       accept: .pdf
@@ -286,7 +286,7 @@ body:
     id: license
     attributes:
       label: License
-      description: "Under what license is it shared? Optional when nothing but a description is shared. For code and documents the coalition default is a permissive open license (MIT, Apache 2.0, CC BY). Submitting does not transfer ownership; your organization keeps authorship."
+      description: "Under what license is it shared? Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship."
       options:
         - MIT
         - Apache 2.0
@@ -328,7 +328,7 @@ body:
     id: reused_from
     attributes:
       label: Adapted from
-      description: "Did you adapt this from another entry in this catalog? Name the source by its slug — the last part of its URL. The entry you name will say it was adopted by yours. One per line, or separated by commas."
+      description: "Did you adapt this from another entry in this catalog? Name it by its slug, the last part of its URL. That entry will show it was adopted by yours. One per line, or separated by commas."
       placeholder: overdose-spike-brief
     validations:
       required: false
@@ -420,7 +420,7 @@ body:
     id: no_pii_attestation
     attributes:
       label: No PII/PHI in the shared material
-      description: "Do you confirm that no personal or protected health information appears in the resource, its documentation, example data or screenshots? The coalition's baseline for anything published here. Reviewers spot-check; if the answer is no, redact before submitting."
+      description: "Do you confirm that no personal or protected health information appears in the resource, its documentation, example data or screenshots? Reviewers spot-check. If the answer is no, redact first."
       options:
         - "Yes"
         - "No"
@@ -502,7 +502,7 @@ body:
     id: submitter_github
     attributes:
       label: GitHub username
-      description: "Your GitHub username (optional) Used once a year: when this entry is due to be re-confirmed the reminder mentions you, so the request reaches the person who wrote it. Leave it blank and the reminder goes to the maintainers alone."
+      description: "Your GitHub username (optional) Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only."
       placeholder: jordan-lee
     validations:
       required: false

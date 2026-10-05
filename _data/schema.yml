@@ -586,7 +586,7 @@ fields:
     group: reuse
     weight: 7
     icon: image
-    description: "Up to eight PNG, JPEG, GIF or WebP images of the tool in use (15 MB total). Make sure no personal or protected information is visible."
+    description: "Up to eight images, 15 MB total. No personal information visible."
 
   - key: deck_pdf
     label: "Slide deck or one-pager (PDF)"
@@ -597,7 +597,6 @@ fields:
     group: reuse
     weight: 8
     icon: presentation
-    description: "Attach the slide deck here. A thumbnail is generated from its first page."
 
   - key: also_deployed_by
     label: "Also deployed by"
@@ -646,7 +645,7 @@ fields:
       "Other open license": { short: "Other open", description: "Name it in the access terms below." }
       "Not open source — available on request": { short: "On request", description: "Peer jurisdictions can ask; say how in the access terms below." }
       "Not open source — description only": { short: "Write-up only", description: "The write-up is what is shared, not the artifact itself." }
-    description: "Optional when nothing but a description is shared. For code and documents the coalition default is a permissive open license (MIT, Apache 2.0, CC BY). Submitting does not transfer ownership; your organization keeps authorship."
+    description: "Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship."
 
   - key: access_terms
     label: "Access terms"
@@ -695,7 +694,7 @@ fields:
     links_entries: true
     search: false
     placeholder: "overdose-spike-brief"
-    description: "Name the source by its slug — the last part of its URL. The entry you name will say it was adopted by yours."
+    description: "Name it by its slug, the last part of its URL. That entry will show it was adopted by yours."
 
   - key: cost_band
     label: "Cost to stand up"
@@ -816,7 +815,7 @@ fields:
     weight: 1
     icon: shield-check
     escalate_on: [false]
-    description: "The coalition's baseline for anything published here. Reviewers spot-check; if the answer is no, redact before submitting."
+    description: "Reviewers spot-check. If the answer is no, redact first."
 
   - key: data_sensitivity
     label: "Data it touches"
@@ -942,7 +941,7 @@ fields:
     weight: 4
     search: false
     placeholder: "jordan-lee"
-    description: "Used once a year: when this entry is due to be re-confirmed the reminder mentions you, so the request reaches the person who wrote it. Leave it blank and the reminder goes to the maintainers alone."
+    description: "Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only."
 
   - key: body
     label: "Full write-up"
