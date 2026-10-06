@@ -37,6 +37,7 @@ jobs:
           create "content:site-config"        "5B3E96" "Apply a site configuration from the /setup/ wizard (maintainers only)"
           create "content:refresh"            "1D4E89" "Answer to a refresh reminder: confirm an entry, or say what changed"
           create "content:also-deployed-by"   "1D4E89" "An organization saying they deployed an existing entry too"
+          create "content:edit-request"       "1D4E89" "A suggested edit to a published entry; a maintainer applies it on a pull request"
           # Not a content: label — nobody applies this one by hand. The monthly
           # verification sweep (verification-sweep.yml) applies it to the refresh
           # issue it keeps open per stale entry, so maintainers can find or mute
@@ -100,8 +101,8 @@ jobs:
             }
 
             // A fork that never ran the wizard still carries the template's own
-            // `github.repository`, and every "Submit", "Edit this page" and
-            // "Report an issue" link on the site then points at someone else's
+            // `github.repository`, and every "Submit", "Suggest an edit" and
+            // "Report a problem" link on the site then points at someone else's
             // repository. Nothing else notices; the links just quietly go
             // somewhere wrong.
             const setup = `https://github.com/${owner}/${repo}/issues/new?template=apply-setup.yml`;

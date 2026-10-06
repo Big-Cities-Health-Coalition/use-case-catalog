@@ -125,6 +125,25 @@ export function isSubmission(issue) {
 }
 
 /**
+ * The submission a draft pull request is for, read from the first usable "Closes #N" (or
+ * "Fixes #N", "Resolves #N", in any case) in its body. Every draft the automation opens
+ * says this, so a reader who typed the draft's number can still be shown the submission.
+ * The references are read in order and one `parseIssueNumber` refuses (`#0`, a number too
+ * large) is skipped for the next. The same pattern as `linkedIssue` in
+ * scripts/lib/notify.mjs, which reads that line on the server side.
+ * @param {unknown} body a pull request's body, as the issues API returns it
+ * @returns {number|null} the linked issue number, or null when nothing usable is linked.
+ */
+export function linkedSubmissionNumber(body) {
+  const text = typeof body === 'string' ? body : '';
+  for (const match of text.matchAll(/(?:^|\s)(?:closes|fixes|resolves)\s+#(\d+)\b/gi)) {
+    const number = parseIssueNumber(match[1]);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+/**
  * Where a submission stands.
  *
  * The status label is the answer when there is one. Without one, the issue's state is
@@ -185,7 +204,9 @@ function safeGithubUrl(value, fallback) {
  * Turn an API response into what the page should say.
  *
  * - `submission`: an issue with a content label; carries the stage and what to show.
- * - `not-submission`: a pull request, or an issue that is not a submission.
+ * - `not-submission`: a pull request, or an issue that is not a submission. A pull
+ *   request's outcome also carries `linked`, the issue its body closes (or null), so the
+ *   page can look that one up instead.
  * - `not-found`: 404 (no such number) or 410 (deleted).
  * - `rate-limited`: 403 or 429, GitHub's answers when the anonymous hourly allowance
  *   for this reader's address is used up.
@@ -204,7 +225,13 @@ export function interpretResponse(status, body, { repo, number }) {
     return { kind: 'unavailable', number, githubUrl };
   }
   if (Object.prototype.hasOwnProperty.call(body, 'pull_request')) {
-    return { kind: 'not-submission', reason: 'pull-request', number, githubUrl };
+    return {
+      kind: 'not-submission',
+      reason: 'pull-request',
+      linked: linkedSubmissionNumber(body.body),
+      number,
+      githubUrl,
+    };
   }
   if (!isSubmission(body)) return { kind: 'not-submission', reason: 'not-labelled', number, githubUrl };
   const { stage, derived } = stageFor(body);

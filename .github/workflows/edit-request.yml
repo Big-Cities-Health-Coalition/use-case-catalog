@@ -1,0 +1,96 @@
+name: Edit request
+
+# The "Suggest an edit" link on every entry page opens
+# .github/ISSUE_TEMPLATE/edit-entry.yml, and the request arrives as an issue
+# labelled `content:edit-request`. Nothing is applied automatically: a
+# maintainer, or a coding agent the maintainer assigns, edits the entry on a
+# pull request whose body says `Closes #N` (docs/edit-requests.md), and a
+# person merges it.
+#
+# This job only answers the person who asked: one comment with the issue
+# number, the /status/ link and what happens next, and `status:received` on the
+# issue. When the slug names no entry, the comment says so and asks for the
+# page address. The wording is scripts/lib/notify.mjs (`edit_request`,
+# `edit_request_unknown_entry`), overridable under `notifications:` in
+# _data/site.yml; the logic is scripts/lib/edit_request.mjs.
+#
+# From there the status moves the way every other form's does: merging the
+# pull request marks the issue `status:published` (pages.yml's announce job,
+# and submission-status.yml when the pull request carries
+# `content:edit-request`), and closing a labelled pull request unmerged is a
+# decline.
+#
+# `edited` as well as `opened`: when a fresh fork's labels were never
+# bootstrapped, missing-label.yml tells the maintainer to add the label and
+# then edit the issue, and that edit is what starts this job. The comment is
+# posted once and an existing status is left alone, so later edits are quiet.
+# The status check reads the issue's labels from the API, not the event
+# payload: an `edited` run can wait in the queue below while the request is
+# published or declined, and its payload would still show no status.
+#
+# Trust model (see SECURITY.md): anyone can open the issue that starts this job.
+#   * Issue content is NEVER interpolated into a `run:` script. It reaches the
+#     one step that reads it through `env:`.
+#   * The token can read the default-branch checkout and comment on and label
+#     issues. Nothing here writes to the repository or opens a pull request.
+#   * The slug is pattern-checked before it becomes a path, and written back
+#     into the comment only when it is a plain slug.
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+
+# The job below declares exactly the scopes it needs; nothing is granted by default.
+permissions: {}
+
+# Queued, not cancelled: an edit right after opening waits for the first run,
+# then finds its comment and stays quiet.
+concurrency:
+  group: edit-request-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  acknowledge:
+    if: >-
+      github.event.issue.state == 'open'
+      && contains(github.event.issue.labels.*.name, 'content:edit-request')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      # The default branch, for the message module, the site's wording and the
+      # entry folders the slug is checked against.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Acknowledge the edit request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const editRequest = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/edit_request.mjs`).href);
+            const { slug, found } = await editRequest.acknowledgeEditRequest({
+              github, context, core,
+              body: String(process.env.ISSUE_BODY || '')
+            });
+            core.info(found ? `The request is about ${slug}.` : 'The slug names no entry; the comment asks for the page address.');

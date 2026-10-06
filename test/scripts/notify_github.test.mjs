@@ -528,6 +528,20 @@ test("missing-label: a maintainer's form submission gets the message but no stat
   assert.deepEqual(github.labelsOf(41), []);
 });
 
+test('missing-label: an edit request whose label was dropped gets the rescue message; a plain "Edit:" issue does not', async () => {
+  const github = await runMissingLabel({
+    title: 'Edit: Water routing',
+    body: '### Entry slug\n\nwater-routing\n\n### What should change?\n\nThe stage.',
+  });
+  const [comment] = github.commentsOn(41);
+  assert.match(comment, /It looks like a \*\*Suggest an edit\*\* submission/);
+  assert.match(comment, /add the `content:edit-request` label/);
+  assert.deepEqual(github.labelsOf(41).sort(), ['needs-triage', STATUS.received]);
+
+  const hand = await runMissingLabel({ title: 'Edit: the home page has a typo', body: 'Plain text' });
+  assert.match(hand.commentsOn(41)[0], /Thank you for getting in touch!/, 'no form body, no form');
+});
+
 test('missing-label: any other outsider issue is acknowledged with no status or status link', async () => {
   const question = await runMissingLabel({ title: 'How do I submit?' });
   assert.match(question.commentsOn(41)[0], /Thank you for getting in touch!/);
@@ -548,6 +562,28 @@ test('missing-label: any other outsider issue is acknowledged with no status or 
     /Thank you for getting in touch!/,
     'a bracketed title without a form body is not a form'
   );
+});
+
+test('missing-label: a site-problem report is acknowledged and left for triage, never taken for a submission', async () => {
+  const form = YAML.parse(
+    fs.readFileSync(path.join(ROOT, '.github/ISSUE_TEMPLATE/site-problem.yml'), 'utf8')
+  );
+  // The issue as GitHub renders the form: its title prefix, one heading per question.
+  const title = `${form.title}the search box does nothing`;
+  const body = form.body
+    .filter((element) => element.type !== 'markdown')
+    .map((element) => `### ${element.attributes.label}\n\n_No response_`)
+    .join('\n\n');
+
+  const outsider = await runMissingLabel({ title, body });
+  const [comment] = outsider.commentsOn(41);
+  assert.match(comment, /Thank you for getting in touch!/);
+  assert.doesNotMatch(comment, /It looks like a/, 'no form claims it, so no "label missing" message');
+  assert.doesNotMatch(comment, /status\/\?n=/);
+  assert.deepEqual(outsider.labelsOf(41), ['needs-triage']);
+
+  const maintainer = await runMissingLabel({ title, body, association: 'COLLABORATOR' });
+  assert.deepEqual(maintainer.calls, []);
 });
 
 test("missing-label: a maintainer's own issue gets no comment at all", async () => {
