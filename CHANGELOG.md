@@ -8,6 +8,70 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.5] — 2026-10-06
+
+Fifth candidate. rc.4's live BCHC update passed and deployed. This candidate makes
+*Suggest an edit* open a plain-language edit-request form and adds a footer
+form for reporting a problem with the site (#91), lets the status page follow a
+draft pull request's number to its submission (#90), leaves a skipped file
+upload blank (#89) and updates `source-map-js` for GHSA-68fv-2mgg-jv7q (#92).
+
+### Added
+
+- **Suggest an edit** now opens a short form instead of GitHub's file editor.
+  Every entry page's link opens `.github/ISSUE_TEMPLATE/edit-entry.yml` with
+  the entry's slug and an *Edit: &lt;entry title&gt;* title filled in. The
+  reader says how they are connected to the entry, describes in plain words
+  what should change, and can leave a name and email for follow-up questions.
+  The issue is labelled `content:edit-request`, and the new `edit-request.yml`
+  workflow posts one acknowledgement with its number and `/status/` link and
+  marks it `status:received`. When the slug names no entry, the comment says
+  so and asks for the page address. Nothing is applied automatically: a
+  maintainer edits the entry on a pull request labelled `content:edit-request`
+  that says `Closes #N`, and merging it publishes the request like any other
+  form's. A coding agent the maintainer assigns can draft that pull request by
+  following the new [docs/edit-requests.md](docs/edit-requests.md); a person
+  always merges. Run **Bootstrap labels** once to create the new label, and
+  reword the acknowledgement under `notifications.messages` (`edit_request`,
+  `edit_request_unknown_entry`) if you like. See
+  [Edit requests](docs/admin-guide.md#edit-requests).
+- **Report a problem with the site.** The per-entry *Report an issue* link,
+  which opened a blank pre-titled issue, is gone: entry pages keep only
+  *Suggest an edit*. Instead the footer of every page links to a short new
+  form, `.github/ISSUE_TEMPLATE/site-problem.yml`, that asks what went wrong
+  and, optionally, the page address and the browser and device. It carries no
+  label, so no content workflow runs on it: `missing-label.yml` acknowledges a
+  report from outside the project and labels it `needs-triage` for a
+  maintainer to triage by hand. See
+  [Site problem reports](docs/admin-guide.md#site-problem-reports).
+
+### Fixed
+
+- `/status/` answered a draft pull request's number with "isn't a submission. It
+  belongs to something else on GitHub", a dead end for a submitter who copied
+  the number they saw most often. It now reads the draft's `Closes #N` (or
+  `Fixes #N`, `Resolves #N`) line and shows that submission, saying "#101 is the
+  draft for submission #97." A pull request that links nothing, or links an
+  issue that is not a submission, still gets "isn't a submission", now worded to
+  ask for the number of the submission itself rather than of its draft. The page
+  makes at most one follow-up request, with the same timeout, rate-limit
+  fallback and handling of overlapping lookups as the first. See
+  [Status page](docs/configuration.md#status-page).
+- A submission that attached no slide deck still had its front matter name
+  one: an unanswered `file` question (GitHub's `_No response_`) was written as
+  `/<entry path>/<slug>/<filename>`, a path no file was ever saved to. The
+  scaffolder now leaves the field blank, the same as any other unanswered
+  question; an attachment the submitter did upload is still downloaded into the
+  entry folder and named by its path.
+
+### Security
+
+- `source-map-js` is updated from 1.2.1 to 1.2.2, which fixes GHSA-68fv-2mgg-jv7q
+  (high: an indexed source map with crafted section offsets could stall the event
+  loop). The advisory failed `npm run security:audit`. The package is a dev-only
+  dependency that comes in through `postcss` and through `jsdom`'s `css-tree`.
+  Both already accept `^1.2.1`, so only the lockfile changes.
+
 ## [1.11.0-rc.4] — 2026-10-05
 
 Fourth candidate. rc.3's live BCHC update stopped before opening a pull request
@@ -1078,7 +1142,6 @@ about a hundred lines of CSS moved rather than added.
 - `docs/design-system.md` gains a Surfaces section and the type table now
   matches the built site; `docs/design-brief.md` carries an amendment note.
 
-
 ## [1.3.0] — 2026-08-17
 
 Contributor panel, wave 2: the six decisions left open by v1.2.0 were taken
@@ -1496,7 +1559,8 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...HEAD
+[1.11.0-rc.5]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...v1.11.0-rc.5
 [1.11.0-rc.4]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.3...v1.11.0-rc.4
 [1.11.0-rc.3]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...v1.11.0-rc.3
 [1.11.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.1...v1.11.0-rc.2

@@ -15,6 +15,7 @@ import {
   isRepository,
   isSubmission,
   issueApiUrl,
+  linkedSubmissionNumber,
   issueHtmlUrl,
   mySubmissionsUrl,
   parseIssueNumber,
@@ -243,10 +244,66 @@ test('pull requests and unlabelled issues are not submissions', () => {
   assert.deepEqual(interpretResponse(200, issue({ pull_request: {} }), lookup), {
     kind: 'not-submission',
     reason: 'pull-request',
+    linked: null,
     number: 42,
     githubUrl: 'https://github.com/owner/repo/issues/42',
   });
-  assert.equal(interpretResponse(200, issue({ labels: labels('bug') }), lookup).reason, 'not-labelled');
+  const unlabelled = interpretResponse(200, issue({ labels: labels('bug'), body: 'Closes #7' }), lookup);
+  assert.equal(unlabelled.reason, 'not-labelled');
+  assert.equal(unlabelled.linked, undefined, 'only a pull request is followed to the issue it closes');
+});
+
+test('a pull request carries the submission its body closes', () => {
+  const outcome = interpretResponse(
+    200,
+    issue({ number: 101, pull_request: { url: 'x' }, body: 'Draft for the use case.\n\nCloses #97\n' }),
+    { repo: 'owner/repo', number: 101 }
+  );
+  assert.equal(outcome.kind, 'not-submission');
+  assert.equal(outcome.reason, 'pull-request');
+  assert.equal(outcome.linked, 97);
+  assert.equal(outcome.number, 101);
+});
+
+test('the submission a pull request links: the first Closes, Fixes or Resolves #N, in any case', () => {
+  assert.equal(linkedSubmissionNumber('Closes #97'), 97);
+  assert.equal(linkedSubmissionNumber('Scaffolded from the issue.\n\ncloses #97'), 97);
+  assert.equal(linkedSubmissionNumber('FIXES #12 and more'), 12);
+  assert.equal(linkedSubmissionNumber('Resolves  #3.'), 3);
+  assert.equal(linkedSubmissionNumber('Closes #5\nCloses #6'), 5, 'the first link wins');
+  assert.equal(linkedSubmissionNumber('Refs #4, then Fixes #8'), 8, 'only a closing keyword links');
+});
+
+test('an out-of-range closing reference is skipped for the next one that is usable', () => {
+  assert.equal(linkedSubmissionNumber('Closes #0\nCloses #97'), 97, 'an invalid first reference');
+  assert.equal(
+    linkedSubmissionNumber(`Fixes #${MAX_ISSUE_NUMBER + 1}, resolves #12`),
+    12,
+    'a number too large'
+  );
+  assert.equal(linkedSubmissionNumber('Closes #97\nCloses #98'), 97, 'two valid references: the first');
+  assert.equal(linkedSubmissionNumber('Closes #0 and Fixes #0'), null, 'none usable');
+});
+
+test('a pull request body that links nothing usable gives no submission number', () => {
+  for (const body of [
+    null,
+    undefined,
+    '',
+    42,
+    { body: 'Closes #1' },
+    'No link here',
+    'Refs #97',
+    'Closes 97',
+    'Closes #',
+    'Closes #0',
+    'Encloses #97',
+    'Closes #97abc',
+    'Closes owner/repo#97',
+    `Closes #${MAX_ISSUE_NUMBER + 1}`,
+  ]) {
+    assert.equal(linkedSubmissionNumber(body), null, JSON.stringify(body));
+  }
 });
 
 test('error statuses: not found, rate limited, and everything else unavailable', () => {

@@ -276,3 +276,39 @@ test('an issue in the old dropdown rendering still scaffolds every choice answer
   for (const field of asked(schema, 'boolean')) assert.equal(fm[field.key], true, field.key);
   assert.doesNotMatch(stdout, /Answers to fix/);
 });
+
+test('a file or image question left blank is stored blank, not as a path no file was written to', () => {
+  // GitHub writes `_No response_` under an upload control nobody used. The
+  // front matter used to name `/<entry path>/<slug>/<filename>` anyway, so the
+  // merged entry pointed at a file that never existed.
+  const schema = repoSchema();
+  const attachments = schema.fields.filter(
+    (field) => field.form !== false && (field.type === 'file' || field.type === 'image')
+  );
+  const file = attachments.find((field) => field.type === 'file');
+  assert.ok(file, 'the repository schema asks at least one file question');
+  const choice = (field) => (field.type === 'boolean' ? 'Yes' : String(field.options[0]));
+  const blank = bodyFor(schema, choice);
+  const unanswered = `### ${file.label}\n\n_No response_`;
+  assert.ok(blank.includes(unanswered), 'bodyFor answers a file question with _No response_');
+
+  // GitHub's own placeholder, an emptied answer, a note with no link in it,
+  // and a body with the question missing altogether.
+  for (const body of [
+    blank,
+    blank.replace(unanswered, `### ${file.label}\n\n`),
+    blank.replace(unanswered, `### ${file.label}\n\nWe will send it later.`),
+    blank.replace(unanswered, ''),
+  ]) {
+    const fm = dryRun(ROOT, body);
+    for (const field of attachments) assert.equal(fm[field.key], '', field.key);
+  }
+
+  // An attachment the upload control did write still names the entry path.
+  const slug = dryRun(ROOT, blank).slug;
+  const attached = blank.replace(
+    unanswered,
+    `### ${file.label}\n\n[${file.filename}](https://github.com/user-attachments/files/12345678/${file.filename})`
+  );
+  assert.equal(dryRun(ROOT, attached)[file.key], `/${schema.entry.path}/${slug}/${file.filename}`);
+});

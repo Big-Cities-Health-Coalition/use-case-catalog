@@ -204,11 +204,12 @@ for (const field of fields.filter((f) => f.type === 'images')) {
 // A `file`/`image` question is an `upload` control on the issue form, so the
 // deck or the photo is already on GitHub by the time this runs: fetch it into
 // the entry folder and the pull request carries the file, not a promise that a
-// maintainer will add it. Nothing attached keeps the previous behaviour — the
-// front matter still names the path the schema expects. A `file` answer that
-// links somewhere other than GitHub's upload store (a file over the 25 MB cap,
-// or one kept in a shared workspace) is stored as that link and not fetched;
-// the entry page renders it as an external row.
+// maintainer will add it. Nothing attached leaves the field blank: naming the
+// path the schema expects would point the entry at a file that was never
+// written (a maintainer who adds one by hand sets the path too). A `file`
+// answer that links somewhere other than GitHub's upload store (a file over the
+// 25 MB cap, or one kept in a shared workspace) is stored as that link and not
+// fetched; the entry page renders it as an external row.
 
 /** @type {Record<string, string>} */
 const attachmentValues = {};
@@ -220,10 +221,10 @@ for (const field of fields.filter((f) => f.type === 'file' || f.type === 'image'
   const publicPath = `/${entryPath}/${slug}/${filename}`;
   const ref = parseAttachmentRef(rawValue(sections, field));
 
-  // No attachment: a `file` keeps naming the path a maintainer uploads into
-  // (docs/admin-guide.md), an `image` has nothing to point at.
+  // No attachment (`_No response_`, a blank answer, text with no link in it):
+  // nothing will be written to `publicPath`, so there is nothing to point at.
   if (!ref) {
-    attachmentValues[field.key] = field.type === 'file' ? publicPath : '';
+    attachmentValues[field.key] = '';
     continue;
   }
   if (!shouldDownload(field.type, ref.url)) {

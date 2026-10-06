@@ -64,6 +64,7 @@ test('no default message uses an em dash, and every acknowledgement names the is
     'handed_over',
     'triage_ack',
     'label_missing',
+    'edit_request',
   ];
   for (const kind of acknowledgements) {
     const body = render(
@@ -435,7 +436,10 @@ test('stageDecision: a plain close may be superseded by another draft; review:de
   );
 });
 
-/** The labels the other intake workflows put on their drafts (the forms' issue labels). */
+/**
+ * The labels the other intake workflows put on their drafts (the forms' issue
+ * labels), and the edit-request label, whose draft a maintainer opens by hand.
+ */
 const OTHER_INTAKE = [
   'content:new-event',
   'content:new-year',
@@ -444,6 +448,7 @@ const OTHER_INTAKE = [
   'content:refresh',
   'content:also-deployed-by',
   'content:site-config',
+  'content:edit-request',
 ];
 
 test('stageDecision: closing any intake form draft unmerged declines its issue; review stages stay entry-only', () => {

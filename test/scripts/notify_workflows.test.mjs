@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 
 import {
+  EDIT_REQUEST_LABEL,
   ENTRY_LABEL,
   INTAKE_LABELS,
   MAINTAINER_ASSOCIATIONS,
@@ -141,8 +142,24 @@ const draftLabels = (name) =>
     })
   );
 
+/**
+ * Forms whose issue is tracked like a submission but whose draft a person (or
+ * an agent they assign) opens by hand, labelled with the form label: the
+ * workflow only acknowledges the issue and never writes a branch.
+ */
+const HAND_DRAFTED = { 'edit-request.yml': EDIT_REQUEST_LABEL };
+
 test('every intake workflow labels its draft with its form label, and INTAKE_LABELS lists exactly those', () => {
   const seen = [];
+  for (const [name, label] of Object.entries(HAND_DRAFTED)) {
+    assert.deepEqual(formLabel(name), [label], `${name} runs for another label`);
+    assert.deepEqual(draftLabels(name), [], `${name} opens no draft`);
+    assert.ok(
+      Object.values(parse(name).jobs).every((job) => !(job.steps ?? []).some(writesBranch)),
+      `${name} writes a branch`
+    );
+    seen.push(label);
+  }
   for (const name of INTAKE) {
     const [form, ...others] = formLabel(name);
     assert.ok(form && others.length === 0, `${name} runs for ${others.length + (form ? 1 : 0)} form labels`);

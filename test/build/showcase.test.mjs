@@ -330,6 +330,12 @@ describe('the showcase', { skip: ready.ok ? false : ready.reason, concurrency: f
         !submit.includes(`github.com/${repository}`),
         `${result.id} would file its sample submissions on ${repository}`
       );
+      // The footer's "Report a problem with the site" link is on every page.
+      const home = fs.readFileSync(path.join(result.siteDir, 'index.html'), 'utf8');
+      assert.ok(
+        !home.includes(`github.com/${repository}/issues/new`),
+        `${result.id} would open an issue on ${repository} from its footer`
+      );
     }
   });
 });

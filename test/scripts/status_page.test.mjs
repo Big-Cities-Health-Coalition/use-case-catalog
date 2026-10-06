@@ -187,22 +187,147 @@ test('changes requested appears as its own step; an unlabelled issue is labelled
   );
 });
 
-/* ----------------------------------------------------------------- refused */
+/** A draft pull request as the issues API returns it: `pull_request` set, `body` the PR description. */
+function draft(number, body) {
+  return issue({
+    number,
+    title: `Add Permit intake triage (#${number})`,
+    html_url: `https://github.com/${REPO}/pull/${number}`,
+    labels: [{ name: 'intake' }],
+    pull_request: { url: `https://api.github.com/repos/${REPO}/pulls/${number}` },
+    body,
+  });
+}
 
-test('a pull request number is gently refused', async () => {
-  const ctx = await boot({ respond: () => answer(200, issue({ pull_request: { url: 'x' } })) });
-  check(ctx, '42');
+const NOT_SUBMISSION =
+  /^Number 101 isn't a submission\. Enter the number of your submission itself \(the issue\), not of its draft\./;
+
+/* ------------------------------------------------------ a draft's number */
+
+test('a draft pull request that closes a submission shows that submission', async () => {
+  const ctx = await boot({
+    respond: (url) =>
+      url.endsWith('/101')
+        ? answer(200, draft(101, 'Scaffolded from the submission.\n\nCloses #97\n'))
+        : answer(200, issue({ number: 97, html_url: `https://github.com/${REPO}/issues/97` })),
+  });
+  check(ctx, '101');
   const said = await settled(ctx.doc);
-  assert.match(said, /^Number 42 isn't a submission\./);
+
+  assert.deepEqual(ctx.requests, [
+    `https://api.github.com/repos/${REPO}/issues/101`,
+    `https://api.github.com/repos/${REPO}/issues/97`,
+  ]);
+  const card = result(ctx.doc);
+  assert.equal(text(card.querySelector('h2')), '[Use case] Permit intake triage');
+  assert.match(text(card), /#101 is the draft for submission #97\./);
+  assert.match(text(card), /Submission #97/);
+  assert.match(text(card), /Where it is now: In review/);
+  const link = [...card.querySelectorAll('a')].find(
+    (a) => a.textContent === 'Open your submission on GitHub'
+  );
+  assert.equal(link.getAttribute('href'), `https://github.com/${REPO}/issues/97`);
+  assert.equal(
+    said,
+    '#101 is the draft for submission #97. Submission #97, [Use case] Permit intake triage: In review.'
+  );
+  assert.equal(
+    new URL(ctx.win.location.href).searchParams.get('n'),
+    '101',
+    'the address keeps what was typed'
+  );
+});
+
+test('a draft pull request that links nothing gets the not-a-submission message', async () => {
+  const ctx = await boot({ respond: () => answer(200, draft(101, 'A draft with no closing line.')) });
+  check(ctx, '101');
+  const said = await settled(ctx.doc);
+  assert.deepEqual(ctx.requests, [`https://api.github.com/repos/${REPO}/issues/101`], 'no second lookup');
+  assert.match(said, NOT_SUBMISSION);
   assert.equal(result(ctx.doc).querySelector('h2'), null, 'no submission card');
   const link = result(ctx.doc).querySelector('a');
   assert.equal(link.getAttribute('href'), `https://github.com/${REPO}/issues?q=is%3Aissue%20author%3A%40me`);
 });
 
+test('a pull request with no body at all gets the same message', async () => {
+  const ctx = await boot({ respond: () => answer(200, draft(101, null)) });
+  check(ctx, '101');
+  assert.match(await settled(ctx.doc), NOT_SUBMISSION);
+  assert.equal(ctx.requests.length, 1);
+});
+
+test('a pull request that closes an issue which is not a submission gets the same message', async () => {
+  for (const linkedIssue of [
+    answer(200, issue({ number: 97, labels: [{ name: 'bug' }] })),
+    answer(200, draft(97, 'Closes #96')),
+    answer(404, { message: 'Not Found' }),
+  ]) {
+    const ctx = await boot({
+      respond: (url) => (url.endsWith('/101') ? answer(200, draft(101, 'Fixes #97')) : linkedIssue),
+    });
+    check(ctx, '101');
+    const said = await settled(ctx.doc);
+    assert.deepEqual(
+      ctx.requests,
+      [`https://api.github.com/repos/${REPO}/issues/101`, `https://api.github.com/repos/${REPO}/issues/97`],
+      'one follow-up lookup, never a chain'
+    );
+    assert.match(said, NOT_SUBMISSION, `linked issue answered ${linkedIssue.status}`);
+    assert.equal(result(ctx.doc).querySelector('h2'), null, 'no submission card');
+  }
+});
+
+test('a pull request that closes itself is not looked up twice', async () => {
+  const ctx = await boot({ respond: () => answer(200, draft(101, 'Closes #101')) });
+  check(ctx, '101');
+  assert.match(await settled(ctx.doc), NOT_SUBMISSION);
+  assert.equal(ctx.requests.length, 1);
+});
+
+test('when GitHub stops answering on the follow-up, the fallback link goes to the submission', async () => {
+  const ctx = await boot({
+    respond: (url) =>
+      url.endsWith('/101')
+        ? answer(200, draft(101, 'Closes #97'))
+        : answer(403, { message: 'API rate limit exceeded' }),
+  });
+  check(ctx, '101');
+  const said = await settled(ctx.doc);
+  assert.match(said, /^#101 is the draft for submission #97\. GitHub limits how often/);
+  const link = result(ctx.doc).querySelector('a');
+  assert.equal(link.getAttribute('href'), `https://github.com/${REPO}/issues/97`);
+  assert.equal(link.textContent, 'Open submission #97 on GitHub');
+});
+
+test('a newer lookup retires a draft whose follow-up is still running', async () => {
+  let releaseFollowUp;
+  const ctx = await boot({
+    respond: (url) => {
+      if (url.endsWith('/101')) return answer(200, draft(101, 'Closes #97'));
+      if (url.endsWith('/97'))
+        return new Promise((resolve) => {
+          releaseFollowUp = () => resolve(answer(200, issue({ number: 97, title: 'Stale' })));
+        });
+      return answer(200, issue({ number: 2, title: 'Second' }));
+    },
+  });
+  check(ctx, '101');
+  for (let i = 0; i < 200 && !releaseFollowUp; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(releaseFollowUp, 'the follow-up lookup never started');
+  check(ctx, '2');
+  await settled(ctx.doc);
+  releaseFollowUp();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(result(ctx.doc).querySelector('h2').textContent, 'Second');
+});
+
+/* ----------------------------------------------------------------- refused */
+
 test('an issue with no content label is not a submission either', async () => {
   const ctx = await boot({ respond: () => answer(200, issue({ labels: [{ name: 'bug' }] })) });
   check(ctx, '42');
-  assert.match(await settled(ctx.doc), /isn't a submission/);
+  assert.match(await settled(ctx.doc), /^Number 42 isn't a submission\./);
+  assert.equal(ctx.requests.length, 1);
 });
 
 test('404: we could not find that number', async () => {
