@@ -80,7 +80,9 @@ jobs:
             // The other forms (bug, docs, feature, accessibility) also carry a
             // label, but nothing is automated from them: a maintainer reads the
             // issue either way. Only the content forms go silent, so only they
-            // are matched here.
+            // are matched here. The site-problem form carries no label at all
+            // and falls through to the acknowledgement below, like any other
+            // outside issue.
             const OTHER_FORMS = ['[Bug]', '[Docs]', '[Feature]', '[Accessibility]'];
 
             // Ordered: "Event attachments:" has to be tried before "Event:".
@@ -95,6 +97,13 @@ jobs:
               { name: 'Start a new cohort year', label: 'content:new-year', match: (t) => t.startsWith('[Cohort]') },
               { name: 'Update a cohort schedule', label: 'content:schedule', match: (t) => t.startsWith('Schedule:') },
               { name: 'Refresh an entry', label: 'content:refresh', match: (t) => t.startsWith('Refresh:') },
+              // "Edit:" is a common start for a hand-written issue too, so the
+              // edit form also needs its form-shaped body.
+              {
+                name: 'Suggest an edit',
+                label: 'content:edit-request',
+                match: (t) => formShapedBody && t.startsWith('Edit:'),
+              },
               {
                 name: 'Also deployed by',
                 label: 'content:also-deployed-by',

@@ -90,7 +90,7 @@ Home / Use cases / Service Request Routing
 │ ## Problem … ## Approach … ## Lessons      │  data sources    │
 │                                            │ Provenance       │
 │ ── Related (same area / AI type) ────────  │  Suggest an edit │
-│ [3 list rows]                              │  Report an issue │
+│ [3 list rows]                              │                  │
 └────────────────────────────────────────────┴──────────────────┘
 ```
 Reading order (and DOM order): breadcrumb → h1 → impact → provenance → fact strip ("Is this reusable for us?") → gallery → TOC (only when ≥3 h2) → body (`--measure`) → sidebar (`aside`) → related. On mobile the fact strip and reuse actions come **before** the prose. Fact-strip items are a `<dl>`: icon `aria-hidden` + visible text (`option_meta.short` with the full value in `title`/sr-only). Gallery: `<dialog>` lightbox, arrow keys, captions from `alt`. Layout degrades by emptying blocks (a 5-field schema collapses the strip to one meta line and the sidebar to Links + Provenance).

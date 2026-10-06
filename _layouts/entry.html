@@ -359,8 +359,11 @@ opened below the header and another above the body.
       <p class="mt-2 text-xs text-brand-muted" data-copy-status role="status"></p>
       {%- if ent_cfg.github.repository and ent_cfg.github.repository != '' -%}
       <ul class="entry-no-print mt-3 space-y-2 text-sm" role="list">
-        <li><a class="entry-action-link" href="https://github.com/{{ ent_cfg.github.repository }}/edit/{{ ent_cfg.github.branch | default: 'main' }}/{{ page.path | escape }}" target="_blank" rel="noopener noreferrer">{% include icon.html name='edit' size='sm' %}Suggest an edit<span class="sr-only"> (opens in a new tab)</span></a></li>
-        <li><a class="entry-action-link" href="https://github.com/{{ ent_cfg.github.repository }}/issues/new?title={{ 'Update: ' | append: page.title | query_encode }}&amp;body={{ 'Requested change for ' | append: page.url | append: ':%0A%0A' }}" target="_blank" rel="noopener noreferrer">{% include icon.html name='flag' size='sm' %}Report an issue<span class="sr-only"> (opens in a new tab)</span></a></li>
+        {%- comment -%} The edit-request form (.github/ISSUE_TEMPLATE/edit-entry.yml),
+        not GitHub's file editor: the reader says in plain words what should change,
+        with this entry's slug and an "Edit: <title>" issue title filled in, and a
+        maintainer makes the edit on a pull request (docs/edit-requests.md). {%- endcomment -%}
+        <li><a class="entry-action-link" href="https://github.com/{{ ent_cfg.github.repository }}/issues/new?template=edit-entry.yml&amp;slug={{ page.slug | query_encode }}&amp;title={{ 'Edit: ' | append: page.title | query_encode }}" target="_blank" rel="noopener noreferrer">{% include icon.html name='edit' size='sm' %}Suggest an edit<span class="sr-only"> (opens in a new tab)</span></a></li>
         {%- comment -%} The quiet way for the reader who has already done this to say
         so: the "Also deployed by" form with this entry's slug filled in, which becomes
         a pull request adding one line to the Reuse card. Shown whether or not anybody

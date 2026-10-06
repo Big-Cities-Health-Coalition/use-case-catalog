@@ -1,0 +1,71 @@
+# Hand-authored, unlike new-entry.yml: this form asks about an existing entry
+# rather than about the schema, so nothing here is generated. Field ids are
+# load-bearing: every entry page's "Suggest an edit" link opens this form with
+# `?template=edit-entry.yml&slug=<slug>&title=Edit: <entry title>`, and
+# scripts/lib/edit_request.mjs reads the answers back by label. Nothing is
+# applied automatically: a maintainer, or a coding agent they assign, makes the
+# edit on a pull request (docs/edit-requests.md).
+name: "Suggest an edit to an entry"
+description: "Tell us what should change on a published entry. A maintainer reviews every request and makes the edit."
+title: "Edit: <entry slug>"
+labels:
+  - content:edit-request
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Spotted something out of date, missing or wrong? Tell us in your own words. You don't need to know
+        anything about how the site is built. A maintainer reads every request, makes the change, and may ask
+        you a question here first.
+
+        This issue is public, so anyone can read what you write. Please leave out private details about
+        anyone, such as personal or health information.
+
+  - type: input
+    id: slug
+    attributes:
+      label: "Entry slug"
+      description: "The last part of the entry's web address: for `.../automated-311-triage/` it is `automated-311-triage`. If you came from the entry's page, it is already filled in."
+      placeholder: "automated-311-triage"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: relationship
+    attributes:
+      label: "How are you connected to this entry?"
+      description: "This helps the maintainer know who to check the change with."
+      options:
+        - "I submitted this entry"
+        - "I work on this project or at the organization behind it"
+        - "Someone else (a reader or partner)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: change
+    attributes:
+      label: "What should change?"
+      description: "Plain sentences are perfect. Say what is wrong or missing and what it should say instead. A link to where you saw the new information helps."
+      placeholder: |
+        The project moved from pilot to production in March, so the stage should say "In production".
+        The contact has changed to sam.rivera@example.org.
+    validations:
+      required: true
+
+  - type: input
+    id: contact_name
+    attributes:
+      label: "Your name (optional)"
+      description: "So the maintainer knows who they are talking to. Leave it blank if you prefer."
+    validations:
+      required: false
+
+  - type: input
+    id: contact_email
+    attributes:
+      label: "Your email (optional)"
+      description: "Only if you would rather get follow-up questions by email than here. Remember that this issue is public."
+      placeholder: "name@example.org"
+    validations:
+      required: false

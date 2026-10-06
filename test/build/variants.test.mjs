@@ -282,6 +282,83 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
   );
 
   test(
+    'shipped: "Suggest an edit" opens the edit-request form for that entry, never the file editor',
+    { skip: needs('shipped') },
+    () => {
+      const { dir, siteDir } = built.get('shipped');
+      const noun = entryNoun(dir);
+      const repository = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8')).github
+        .repository;
+      const slugs = fs
+        .readdirSync(path.join(siteDir, noun.path), { withFileTypes: true })
+        // Entry folders only: the facet and A-Z landing pages share the path.
+        .filter(
+          (item) => item.isDirectory() && fs.existsSync(path.join(dir, noun.path, item.name, 'index.md'))
+        )
+        .map((item) => item.name);
+      assert.ok(slugs.length > 0, 'no entry pages were built');
+      for (const slug of slugs) {
+        const source = fs.readFileSync(path.join(dir, noun.path, slug, 'index.md'), 'utf8');
+        const { title } = yaml.load(/^---\n([\s\S]*?)\n---/.exec(source)[1]);
+        const document = page(siteDir, `${noun.path}/${slug}`);
+        const links = [...document.querySelectorAll('a.entry-action-link')].filter((a) =>
+          /Suggest an edit/.test(a.textContent)
+        );
+        assert.equal(links.length, 1, `${slug} has ${links.length} "Suggest an edit" links`);
+        const url = new URL(links[0].getAttribute('href'));
+        assert.equal(`${url.origin}${url.pathname}`, `https://github.com/${repository}/issues/new`, slug);
+        assert.equal(url.searchParams.get('template'), 'edit-entry.yml', slug);
+        assert.equal(url.searchParams.get('slug'), slug, slug);
+        assert.equal(url.searchParams.get('title'), `Edit: ${title}`, slug);
+        assert.equal(
+          document.querySelector(`a[href^="https://github.com/${repository}/edit/"]`),
+          null,
+          `${slug} still links to GitHub's file editor`
+        );
+      }
+    }
+  );
+
+  test(
+    'shipped: entry pages have no "Report an issue" link; the footer links to the site-problem form',
+    { skip: needs('shipped') },
+    () => {
+      const { dir, siteDir } = built.get('shipped');
+      const noun = entryNoun(dir);
+      const repository = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8')).github
+        .repository;
+      const slugs = fs
+        .readdirSync(path.join(siteDir, noun.path), { withFileTypes: true })
+        .filter(
+          (item) => item.isDirectory() && fs.existsSync(path.join(dir, noun.path, item.name, 'index.md'))
+        )
+        .map((item) => item.name);
+      assert.ok(slugs.length > 0, 'no entry pages were built');
+      const siteProblem = `https://github.com/${repository}/issues/new?template=site-problem.yml`;
+      for (const urlPath of [...slugs.map((slug) => `${noun.path}/${slug}`), '']) {
+        const document = page(siteDir, urlPath);
+        const where = urlPath || 'home';
+        assert.deepEqual(
+          [...document.querySelectorAll('a')]
+            .filter((a) => /Report an issue/i.test(a.textContent))
+            .map((a) => a.getAttribute('href')),
+          [],
+          `${where} still has a "Report an issue" link`
+        );
+        const links = [...document.querySelectorAll('footer a')].filter(
+          (a) => a.getAttribute('href') === siteProblem
+        );
+        assert.equal(links.length, 1, `${where} footer has ${links.length} site-problem links`);
+        const [link] = links;
+        assert.equal(link.textContent.trim(), 'Report a problem with the site (opens in a new tab)', where);
+        assert.equal(link.querySelector('.sr-only')?.textContent, ' (opens in a new tab)', where);
+        assert.equal(link.getAttribute('target'), '_blank', where);
+        assert.equal(link.getAttribute('rel'), 'noopener noreferrer', where);
+      }
+    }
+  );
+
+  test(
     'shipped: built-site distributions retain the complete third-party notice',
     { skip: needs('shipped') },
     () => {

@@ -7,8 +7,10 @@ name: Submission status
 #
 # Every table row is for an entry draft (`content:new-entry`). The drafts the
 # other forms open (events, cohort years, schedules, attachments, refreshes,
-# "also deployed by", setup) carry their form's `content:*` label and get the
-# last three rows only: closed unmerged is a decline, merged is published.
+# "also deployed by", setup), and the pull request a maintainer opens by hand
+# for an edit request (`content:edit-request`), carry their form's `content:*`
+# label and get the last three rows only: closed unmerged is a decline, merged
+# is published.
 # Their issue must carry the same form label (or, failing any form label, a
 # status label), so a draft whose "Closes #N" names another form's issue
 # changes nothing.

@@ -46,8 +46,15 @@
           {% if ft_cfg.modules.status != false and ft_status_listed == 0 and ft_cfg.github.repository and ft_cfg.github.repository != '' %}
             <li><a class="footer-link transition hover:text-white hover:underline" href="{{ '/status/' | relative_url }}">{{ ft_cfg.status.link_label | default: 'Check a submission' }}</a></li>
           {% endif %}
+          {%- comment -%}
+          "Report a problem with the site" opens the unlabelled site-problem form
+          (.github/ISSUE_TEMPLATE/site-problem.yml) rather than a blank issue, which
+          the chooser turns off. Showcase examples blank `github.repository`, so
+          they never open an issue on the template's repository.
+          {%- endcomment -%}
           {% if ft_cfg.github.repository and ft_cfg.github.repository != '' %}
             <li><a class="footer-link transition hover:text-white hover:underline" href="https://github.com/{{ ft_cfg.github.repository }}" target="_blank" rel="noopener noreferrer">Source on GitHub<span class="sr-only"> (opens in a new tab)</span></a></li>
+            <li><a class="footer-link transition hover:text-white hover:underline" href="https://github.com/{{ ft_cfg.github.repository }}/issues/new?template=site-problem.yml" target="_blank" rel="noopener noreferrer">Report a problem with the site<span class="sr-only"> (opens in a new tab)</span></a></li>
           {% endif %}
         </ul>
         {% if ft_cfg.organization.contact_email and ft_cfg.organization.contact_email != '' %}

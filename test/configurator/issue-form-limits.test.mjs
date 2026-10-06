@@ -167,6 +167,41 @@ test("every committed issue form is within GitHub's limits", () => {
   assert.equal(describeIssueFormProblems(checkIssueForms(ROOT)), '');
 });
 
+// The footer's "Report a problem with the site" link opens this form by name,
+// and config.yml turns blank issues off, so a dropped form leaves the public no
+// way to report a broken page at all.
+test("the site-problem form is within GitHub's limits, unlabelled, and asks what went wrong", () => {
+  const file = path.join(ROOT, '.github/ISSUE_TEMPLATE/site-problem.yml');
+  const text = fs.readFileSync(file, 'utf8');
+  const form = jsYaml.load(text);
+  assert.deepEqual(issueFormProblems(form), []);
+  assert.deepEqual(
+    checkIssueForms(ROOT).find((result) => result.file.endsWith('/site-problem.yml'))?.problems,
+    [],
+    'the validate and generate gates check it too'
+  );
+  assert.equal(form.name, 'Report a problem with the site');
+  assert.equal(form.title, 'Site problem: ');
+  assert.equal(form.labels, undefined, 'no label: it is not a submission, so no content workflow runs');
+  assert.deepEqual(
+    form.body
+      .filter((element) => element.type !== 'markdown')
+      .map((element) => [
+        element.type,
+        element.id,
+        element.attributes.label,
+        element.validations?.required === true,
+      ]),
+    [
+      ['textarea', 'problem', 'What went wrong?', true],
+      ['input', 'page', 'Page address', false],
+      ['input', 'device', 'Browser and device', false],
+    ]
+  );
+  assert.match(text, /public/i, 'the form says the issue is public');
+  assert.doesNotMatch(text, /—/, 'no em dashes in copy written for non-coders');
+});
+
 test('issueFormProblems names each broken rule and where it is', () => {
   const ok = { type: 'input', id: 'a', attributes: { label: 'A', description: 'x'.repeat(200) } };
   assert.deepEqual(issueFormProblems({ name: 'Good form', description: 'Fine.', body: [ok] }), []);

@@ -62,13 +62,21 @@ export const TRIAGE_LABEL = 'needs-triage';
 export const ENTRY_LABEL = 'content:new-entry';
 
 /**
+ * The label on an edit request (.github/ISSUE_TEMPLATE/edit-entry.yml). Its
+ * draft is opened by a maintainer, or an agent they assign, not by a workflow
+ * (docs/edit-requests.md); labelled with this, it counts like any intake draft.
+ */
+export const EDIT_REQUEST_LABEL = 'content:edit-request';
+
+/**
  * Every submission form's intake label. The form puts it on the issue, and the
  * form's workflow puts the same label on the draft pull request it opens and
  * sets the issue's status. Closing any of these drafts without a merge is a
  * decline (submission-status.yml); the review stages in between are tracked
  * for entries only. All start with `content:`, the prefix the workflow's `if`
  * filters on (test/scripts/notify_workflows.test.mjs checks both, and that
- * bootstrap-labels.yml creates exactly these).
+ * bootstrap-labels.yml creates exactly these). An edit request's draft is the
+ * one a person opens and labels by hand.
  */
 export const INTAKE_LABELS = Object.freeze([
   ENTRY_LABEL,
@@ -79,6 +87,7 @@ export const INTAKE_LABELS = Object.freeze([
   'content:refresh',
   'content:also-deployed-by',
   'content:site-config',
+  EDIT_REQUEST_LABEL,
 ]);
 
 /** Review-tier labels the stage workflow (submission-status.yml) acts on. */
@@ -153,6 +162,16 @@ export const DEFAULT_MESSAGES = Object.freeze({
     '{details}',
     '{status_help}',
   ].join('\n\n'),
+  edit_request: [
+    'Thank you for suggesting an edit! We received your request. Its number is **{number}**.',
+    '{entry_note}',
+    'A maintainer will review your request and make the change if it checks out. They may contact you with questions, here or by email if you left an address. Nothing on the site changes until they do.',
+    '{status_help}',
+  ].join('\n\n'),
+  // The {entry_note} above when the slug names no entry. {entry} is the slug
+  // in a code span, or "the entry you named" when it is not a slug at all.
+  edit_request_unknown_entry:
+    "We could not find {entry} on the site, so we are not sure which page you mean. Could you add a comment here with the web address of the page? You can copy it from your browser's address bar.",
   triage_ack: [
     'Thank you for getting in touch! We received this. Its number is **{number}**.',
     'A maintainer will read it and reply here. There is nothing more you need to do right now.',

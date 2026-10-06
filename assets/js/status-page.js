@@ -6,6 +6,11 @@
 // ./lib/submission-status.js; this file only turns that into DOM. Every string that
 // came from the API is set with textContent, never parsed as HTML.
 //
+// A reader who types the number of a submission's draft pull request (every draft says
+// "Closes #<submission>", and the bot links it from the issue) is shown the submission
+// that draft closes: one follow-up request, under the same abort, timeout and
+// retirement as the first.
+//
 // When GitHub cannot answer (the anonymous hourly allowance is used up, the network is
 // down, the request times out) the page falls back to a plain link to the issue on
 // GitHub, built from the repository and the number, so the reader is never stuck.
@@ -184,6 +189,11 @@ export function initStatusPage() {
     );
   }
 
+  /** "#101 is the draft for submission #97." for an outcome reached through a draft's number. */
+  function draftNote(outcome) {
+    return `#${outcome.draft} is the draft for submission #${outcome.number}.`;
+  }
+
   /** The found-it card. */
   function submissionCard(outcome) {
     const copy = stageCopy(outcome.stage);
@@ -199,13 +209,16 @@ export function initStatusPage() {
     if (submitted)
       header.push(el('p', { class: 'mt-1 text-sm text-brand-muted', text: `Submitted ${submitted}` }));
 
-    const body = [
+    const body = [];
+    if (outcome.draft)
+      body.push(el('p', { class: 'mb-3 text-sm text-brand-muted', text: draftNote(outcome) }));
+    body.push(
       el('p', { class: 'text-base text-brand-ink' }, [
         'Where it is now: ',
         el('strong', { text: copy.label }),
       ]),
-      stepList(outcome.stage),
-    ];
+      stepList(outcome.stage)
+    );
     if (copy.next)
       body.push(
         el('p', { class: 'mt-4 rounded-lg bg-surface-tint p-4 text-sm text-brand-ink', text: copy.next })
@@ -232,28 +245,30 @@ export function initStatusPage() {
 
   /**
    * Paint an outcome and announce it.
-   * @param {object} outcome from interpretResponse, or `{kind: 'unavailable'}` after a failed fetch
+   * @param {object} outcome from interpretResponse; `draft` is set (the number typed) when
+   *   it is the submission a draft pull request closes, looked up in its place
    */
   function render(outcome) {
     const n = outcome.number;
     const mine = { href: mySubmissionsUrl(repo), text: 'See every submission you have made on GitHub' };
     const direct = { href: outcome.githubUrl, text: `Open submission #${n} on GitHub` };
+    const via = outcome.draft ? `${draftNote(outcome)} ` : '';
     let node;
     let message;
     if (outcome.kind === 'submission') {
       node = submissionCard(outcome);
-      message = `Submission #${n}${outcome.title ? `, ${outcome.title}` : ''}: ${stageCopy(outcome.stage).label}.`;
+      message = `${via}Submission #${n}${outcome.title ? `, ${outcome.title}` : ''}: ${stageCopy(outcome.stage).label}.`;
     } else if (outcome.kind === 'not-found') {
       message = `We couldn't find submission #${n}. Check the number in the emails GitHub sent you and try again.`;
       node = notice(message, mine);
     } else if (outcome.kind === 'not-submission') {
-      message = `Number ${n} isn't a submission. It belongs to something else on GitHub. Check the number in the emails GitHub sent you and try again.`;
+      message = `Number ${n} isn't a submission. Enter the number of your submission itself (the issue), not of its draft. It is in the emails GitHub sent you.`;
       node = notice(message, mine);
     } else if (outcome.kind === 'rate-limited') {
-      message = `GitHub limits how often this page can look things up, and that limit has been reached for now. You can still open submission #${n} on GitHub directly.`;
+      message = `${via}GitHub limits how often this page can look things up, and that limit has been reached for now. You can still open submission #${n} on GitHub directly.`;
       node = notice(message, direct);
     } else {
-      message = `We couldn't reach GitHub just now. You can still open submission #${n} on GitHub directly, or try again in a moment.`;
+      message = `${via}We couldn't reach GitHub just now. You can still open submission #${n} on GitHub directly, or try again in a moment.`;
       node = notice(message, direct);
     }
     result.textContent = '';
@@ -261,6 +276,26 @@ export function initStatusPage() {
     result.hidden = false;
     result.removeAttribute('aria-busy');
     announce(message);
+  }
+
+  /**
+   * Ask GitHub for one issue and say what the answer means. A failed request (network,
+   * timeout, abort, a body that is not JSON) reads as GitHub being unavailable.
+   * @param {number} number
+   * @param {AbortSignal} signal
+   * @returns {Promise<object>} from interpretResponse
+   */
+  async function fetchOutcome(number, signal) {
+    try {
+      const response = await fetch(issueApiUrl(repo, number), {
+        headers: { Accept: 'application/vnd.github+json' },
+        signal,
+      });
+      const body = response.status === 200 ? await response.json() : null;
+      return interpretResponse(response.status, body, { repo, number });
+    } catch {
+      return interpretResponse(0, null, { repo, number });
+    }
   }
 
   /**
@@ -298,14 +333,18 @@ export function initStatusPage() {
 
     let outcome;
     try {
-      const response = await fetch(issueApiUrl(repo, number), {
-        headers: { Accept: 'application/vnd.github+json' },
-        signal: controller.signal,
-      });
-      const body = response.status === 200 ? await response.json() : null;
-      outcome = interpretResponse(response.status, body, { repo, number });
-    } catch {
-      outcome = interpretResponse(0, null, { repo, number });
+      outcome = await fetchOutcome(number, controller.signal);
+      // A draft pull request's number: show the submission its body closes. One hop only.
+      // When GitHub cannot answer that second request, its fallback link to the submission
+      // is shown; when the linked issue is not a submission, the reader is told about the
+      // number they typed.
+      const linked = outcome.reason === 'pull-request' ? outcome.linked : null;
+      if (ticket === latest && linked && linked !== number) {
+        const followed = await fetchOutcome(linked, controller.signal);
+        if (['submission', 'rate-limited', 'unavailable'].includes(followed.kind)) {
+          outcome = { ...followed, draft: number };
+        }
+      }
     } finally {
       window.clearTimeout(timer);
     }
