@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publishing submissions: a guide for the Public Health AI &amp; Tech Exchange</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #57606a;
+    --line: #d0d7de;
+    --soft: #f6f8fa;
+    --accent: #1f4e79;
+    --note: #eef3f8;
+    --note-line: #9db3c8;
+    --warn: #fbf6ea;
+    --warn-line: #d4b46a;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 17px; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.5rem; }
+  h2 {
+    font-size: 1.45rem; line-height: 1.25; margin: 3rem 0 0.75rem;
+    padding-top: 1.25rem; border-top: 1px solid var(--line);
+  }
+  h3 { font-size: 1.1rem; margin: 1.75rem 0 0.4rem; }
+  p, ul, ol { margin: 0 0 0.9rem; }
+  li { margin-bottom: 0.3rem; }
+  li > ul, li > ol { margin-top: 0.3rem; }
+  a { color: var(--accent); }
+  .lead { font-size: 1.1rem; color: var(--muted); }
+  .meta { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.5rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em; background: var(--soft); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0.05em 0.35em; white-space: nowrap;
+  }
+  code.wrap { white-space: normal; word-break: break-all; }
+  .ui { font-weight: 600; }
+  .callout {
+    border-left: 4px solid var(--note-line); background: var(--note);
+    padding: 0.75rem 1rem; margin: 1rem 0 1.25rem; border-radius: 0 6px 6px 0;
+  }
+  .callout.warn { border-left-color: var(--warn-line); background: var(--warn); }
+  .callout p:last-child, .callout ul:last-child, .callout ol:last-child { margin-bottom: 0; }
+  .callout > strong:first-child { display: block; margin-bottom: 0.2rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1.25rem; font-size: 0.92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.45rem 0.6rem; border: 1px solid var(--line); }
+  th { background: var(--soft); }
+  dl { margin: 0 0 1rem; }
+  dt { font-weight: 600; margin-top: 0.6rem; }
+  dd { margin: 0.1rem 0 0 1.25rem; }
+  figure { margin: 1.25rem 0 1.5rem; }
+  figure img {
+    display: block; width: 100%; height: auto; min-height: 7rem; object-fit: contain;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--soft);
+    color: var(--muted); font-size: 0.85rem;
+  }
+  figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.4rem; }
+  nav.toc { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.5rem 0 2rem; }
+  nav.toc h2 { border: 0; margin: 0 0 0.5rem; padding: 0; font-size: 1.05rem; }
+  nav.toc ol { margin: 0; padding-left: 1.4rem; columns: 2; column-gap: 2rem; }
+  nav.toc li { break-inside: avoid; }
+  .cheat { border: 2px solid var(--ink); border-radius: 8px; padding: 1rem 1.25rem; margin-top: 3rem; font-size: 0.86rem; line-height: 1.4; }
+  .cheat h2 { border: 0; margin: 0 0 0.25rem; padding: 0; font-size: 1.3rem; }
+  .cheat h3 { font-size: 0.95rem; margin: 0.7rem 0 0.25rem; }
+  .cheat p, .cheat ul, .cheat ol { margin-bottom: 0.4rem; }
+  .cheat ul, .cheat ol { padding-left: 1.1rem; }
+  .cheat li { margin-bottom: 0.1rem; }
+  .cheat table { font-size: 0.8rem; margin: 0.25rem 0 0.5rem; }
+  .cheat th, .cheat td { padding: 0.25rem 0.4rem; }
+  .cheat code { font-size: 0.8em; padding: 0 0.25em; }
+  .cheat .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.25rem; }
+  @media (max-width: 40rem) {
+    nav.toc ol { columns: 1; }
+    .cheat .cols { grid-template-columns: 1fr; }
+  }
+
+  @media print {
+    @page { size: letter; margin: 0.6in 0.65in; }
+    html { font-size: 10.5pt; }
+    main { max-width: none; padding: 0; }
+    a { color: inherit; text-decoration: none; }
+    h2 { break-before: page; border-top: 0; padding-top: 0; margin-top: 0; }
+    h2, h3 { break-after: avoid; }
+    nav.toc h2, .cheat h2 { break-before: auto; }
+    figure, table, .callout, pre { break-inside: avoid; }
+    figure img { max-height: 4.2in; width: auto; max-width: 100%; margin: 0 auto; }
+    p, li { orphans: 3; widows: 3; }
+    nav.toc { break-inside: avoid; }
+    .cheat {
+      break-before: page; break-inside: avoid; border: 0; padding: 0; margin: 0;
+      font-size: 9.5pt; line-height: 1.35;
+    }
+    .cheat h2 { font-size: 13pt; }
+    .cheat .cols { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Publishing submissions</h1>
+  <p class="lead">A short guide for whoever manages the Public Health AI &amp; Tech Exchange: how to check a new submission and publish it.</p>
+  <p class="meta">Catalog: big-cities-health-coalition.github.io/use-case-catalog · Repository: github.com/Big-Cities-Health-Coalition/use-case-catalog</p>
+</header>
+
+<p>Everything happens in a web browser. You need a GitHub account with write access to the catalog's repository. The technical maintainer looks after the machinery behind the site, and this guide says when to hand something to them. Once you've read it through, the <a href="#cheat-sheet">cheat sheet</a> on the last page should be enough.</p>
+
+<nav class="toc" aria-labelledby="toc-heading">
+  <h2 id="toc-heading">Contents</h2>
+  <ol>
+    <li><a href="#how-it-works">How a submission arrives</a></li>
+    <li><a href="#notifications">Getting notified</a></li>
+    <li><a href="#open">Opening a submission</a></li>
+    <li><a href="#check">Checking it</a></li>
+    <li><a href="#fix">Fixing something</a></li>
+    <li><a href="#publish">Publishing</a></li>
+    <li><a href="#not-publishing">Not publishing</a></li>
+    <li><a href="#edit-requests">Handling an edit request</a></li>
+    <li><a href="#checks">Red checks and bot pull requests</a></li>
+    <li><a href="#requests">Refresh and "also deployed by" requests</a></li>
+    <li><a href="#cheat-sheet">Cheat sheet</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="how-it-works">1. How a submission arrives</h2>
+
+<ol>
+  <li>The submitter opens the catalog's <span class="ui">Submit</span> page, fills in the form and presses <span class="ui">Submit</span>.</li>
+  <li>The site hands their answers to GitHub, which asks them to sign in and then to press <span class="ui">Create</span>. Everyone who submits needs a GitHub account. That is how the site keeps spam out.</li>
+  <li>GitHub files their answers as a numbered <strong>issue</strong> (a post on GitHub), such as #94, and shows them the number. The issue ends with "Submitted through the website by @" and their GitHub username.</li>
+  <li>Within a minute or two, the site's automation turns the answers into a catalog entry and opens a <strong>pull request</strong> for it.</li>
+</ol>
+
+<div class="callout">
+  <strong>What a pull request is</strong>
+  <p>A pull request is a proposed change to the site's files, waiting for someone to accept it. It shows exactly what would change, and it runs automatic checks. Nothing in it is public until someone <strong>merges</strong> it. On this site, merging is publishing. This guide calls a submission's pull request its <strong>draft</strong>.</p>
+</div>
+
+<p>That's the whole process. You check the draft. If it's good, you publish it. If something needs fixing, you contact the submitter, fix it yourself, and then publish it.</p>
+
+<div class="callout">
+  <strong>Tip: the status page</strong>
+  <p>Submitters can check progress on the site's status page (<code>/status/</code>). They can enter either their submission number (the issue) or the draft's number. If someone asks where their submission has got to, point them there.</p>
+</div>
+
+<figure>
+  <img src="img/01-submit-signin.png" alt="The catalog's Submit page.">
+  <figcaption>Figure 1. The Submit page.</figcaption>
+</figure>
+<figure>
+  <img src="img/02-submit-form-filled.png" alt="The Submit form with sample answers filled in.">
+  <figcaption>Figure 2. The form, with sample answers filled in.</figcaption>
+</figure>
+<figure>
+  <img src="img/03-submit-done.png" alt="The confirmation shown after submitting, giving the new submission's number and a link to check its status.">
+  <figcaption>Figure 3. The last step: the submitter checks their answers, then sends them to GitHub.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="notifications">2. Getting notified</h2>
+
+<ol>
+  <li>On the repository's main page, click <span class="ui">Watch</span> (top right).</li>
+  <li>Choose <span class="ui">Custom</span>, tick <span class="ui">Issues</span> and <span class="ui">Pull requests</span>, and click <span class="ui">Apply</span>.</li>
+  <li>Click your profile picture → <span class="ui">Settings</span> → <span class="ui">Notifications</span>. Make sure <span class="ui">Email</span> is ticked under <span class="ui">Watching</span>.</li>
+</ol>
+<p>GitHub will now email you about each new submission. To see everything that's waiting, open the <span class="ui">Pull requests</span> tab and search for <code>is:open label:"content:new-entry"</code>. You can bookmark the results page.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="open">3. Opening a submission</h2>
+
+<p>Open the new issue. A bot comment thanks the submitter, gives the submission number and links the draft (Figure 4). Follow that link. The draft is the page you review, fix and publish from. Its title is <strong>Add entry:</strong> plus the entry's name.</p>
+<p>The draft has two tabs you'll use:</p>
+<ul>
+  <li><span class="ui">Conversation</span>: the description, the check and the merge button;</li>
+  <li><span class="ui">Files changed</span>: the entry itself, including the full write-up.</li>
+</ul>
+<p>If the issue has no bot comment after ten minutes, tell the technical maintainer.</p>
+
+<figure>
+  <img src="img/05-issue-acknowledgement.png" alt="A submission issue ending with Submitted through the website by a username, followed by the bot's comment giving the submission number and a link to the draft.">
+  <figcaption>Figure 4. The bot's comment on a new issue links to the draft.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="check">4. Checking it</h2>
+
+<p>The draft's description has everything you need for a first read:</p>
+<ul>
+  <li><strong>The entry</strong>: a preview of the summary and the main answers.</li>
+  <li><strong>Closer review</strong> (only on some drafts): the submitter said the material may involve personal or health data, or that it produces public-facing output. Read these drafts with extra care.</li>
+  <li><strong>Answers to fix</strong> (only on some drafts): see below.</li>
+  <li><strong>Maintainer checklist</strong>: the coalition's review criteria. Tick the boxes as you go.</li>
+</ul>
+<p>Leave the "Closes #…" line in the description alone. It links the draft to the issue and closes the issue when you publish.</p>
+
+<figure>
+  <img src="img/08-draft-pr-overview.png" alt="The Conversation tab of an Add entry pull request, showing the top of the description: the issue link, the Closes line and the entry preview.">
+  <figcaption>Figure 5. The top of a draft, with the entry preview.</figcaption>
+</figure>
+<figure>
+  <img src="img/09-pr-checklist.png" alt="The lower part of a draft's description: a Closer review block naming a flagged answer, then the Maintainer checklist.">
+  <figcaption>Figure 6. A Closer review block and the checklist.</figcaption>
+</figure>
+
+<h3>What to look for</h3>
+<ul>
+  <li><strong>No personal or health information.</strong> This applies to the write-up, the linked documents and the screenshots. Open each picture at full size and look for names, addresses, record numbers and email addresses. Never publish planning to clean it up later.</li>
+  <li><strong>Working links.</strong> Open each one in a private or incognito window to see what a visitor sees. A link that needs a sign-in is no use to a reader.</li>
+  <li><strong>A reachable contact.</strong> A name and an email address that will still work in a year. A shared team address is best.</li>
+  <li><strong>It makes sense.</strong> The required answers are filled in, the summary reads clearly to an outsider, and the categories fit.</li>
+</ul>
+
+<h3>Answers to fix</h3>
+<p>Some questions only accept set options, such as <em>Stage</em>. If an answer matches none of them, the automation leaves it out of the entry. It then lists the answer under <strong>Answers to fix</strong>, showing what the submitter typed. Put in the right option yourself (<a href="#fix">next section</a>). The allowed options are listed on the GitHub form at Issues → <span class="ui">New issue</span> → <span class="ui">Submit a use case</span>. Until a missing required answer is filled in, the check stays red and the draft can't be published.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="fix">5. Fixing something</h2>
+
+<p>There's no back-and-forth on GitHub. If you have a question, use the contact details in the submission to email or call the submitter. Agree on the change, then make it yourself in the draft's entry file:</p>
+<ol>
+  <li>Open the draft's <span class="ui">Files changed</span> tab.</li>
+  <li>On the entry file (its name ends in <code>index.md</code>), open the <span class="ui">…</span> menu and choose <span class="ui">Edit file</span>.</li>
+  <li>Make the change. Each answer is on its own line, starting with its name, such as <code>stage: "Pilot"</code>. The write-up is at the bottom. If you're adding a missing answer, add a new line in the same style. Keep the quotation marks.</li>
+  <li>Click <span class="ui">Commit changes</span>. Leave it committing to the draft's own branch, which is the default, and confirm.</li>
+</ol>
+<p>The check runs again on its own.</p>
+<p>Always make fixes in the file. Editing the issue afterwards doesn't change the draft.</p>
+
+<figure>
+  <img src="img/11-pr-files-changed.png" alt="The Files changed tab of a draft, showing the entry file with one answer per line and the menu open on Edit file.">
+  <figcaption>Figure 7. The entry file in Files changed, with the Edit file menu open.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="publish">6. Publishing</h2>
+
+<ol>
+  <li><strong>Mark it reviewed.</strong> Edit the entry file as in <a href="#fix">section 5</a>. Change <code>review_status: "Under review"</code> to <code>review_status: "Reviewed &amp; approved"</code> and commit. Otherwise the published page says "Under review".</li>
+  <li><strong>Wait for the check.</strong> The one that matters is <span class="ui">Content: entries and site build</span>, and it takes about ten to twenty minutes. The merge button stays grey until it's green. If GitHub also offers an <span class="ui">Update branch</span> button, ignore it. The draft doesn't need it.</li>
+  <li><strong>Merge</strong> with the green button on the Conversation tab, and confirm. Any of GitHub's merge options works.</li>
+  <li><strong>Confirm it's live.</strong> A few minutes after you merge, the issue closes. Once the site has rebuilt, the bot comments "Your entry is now live at …" with a link. Open the link and check the page. If there's no comment after half an hour, tell the technical maintainer.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="not-publishing">7. Not publishing</h2>
+
+<p>If a submission can't be published, even after you've spoken to the submitter:</p>
+<ol>
+  <li>On the draft, leave a one-line comment giving the reason. The submitter can read it, so keep it kind and leave out anything personal.</li>
+  <li>Click <span class="ui">Close pull request</span>. Don't merge.</li>
+</ol>
+<p>The bot then thanks the submitter on their issue, says the entry won't be published, and points them to your comment. It also closes the issue. Closing a draft always sends that message, so only close a draft when you mean it.</p>
+
+
+<!-- ============================================================ -->
+<h2 id="edit-requests">8. Handling an edit request</h2>
+
+<p>Every entry page on the live site has a <span class="ui">Suggest an edit</span> link. It opens a GitHub form with two things already filled in: the entry's slug (the last part of the page's address) and a title, "Edit:" followed by the entry's name. The person says how they're connected to the entry, describes the change and, if they like, leaves a name and email address. Like submitters, they need a GitHub account.</p>
+<p>The request arrives as an issue labelled <code>content:edit-request</code>. A bot comments to acknowledge it and labels it <code>status:received</code>. If the slug doesn't match any entry, the bot's comment says so. Check the comments for a corrected page address. The requester can follow the request on the status page with the issue's number. To see every open request, open the <span class="ui">Issues</span> tab and search for <code>is:open label:"content:edit-request"</code>.</p>
+
+<h3>Deciding whether to make it</h3>
+<p>Read the request and every comment on it. Then look at how the person says they're connected to the entry:</p>
+<ul>
+  <li><strong>I submitted this entry</strong> or <strong>I work on this project or at the organization behind it</strong>: they speak for the entry, so a small correction can go ahead.</li>
+  <li><strong>Someone else (a reader or partner)</strong>: they may well be right, but check with the entry's contact before you change anything.</li>
+</ul>
+<p>Whoever asks, check with the entry's contact before a bigger change, such as new contact details, claims about what the project does or has achieved, or costs. To ask the requester a question, comment on the issue.</p>
+
+<h3>Making the change</h3>
+<p>You can make the change yourself or hand it to an AI assistant. Either way, you end up with a pull request that changes the entry's file, <code>catalog/&lt;slug&gt;/index.md</code>.</p>
+<p><strong>Doing it yourself:</strong></p>
+<ol>
+  <li>On the repository's <span class="ui">Code</span> tab, open the <code>catalog</code> folder, then the folder named after the slug, then <code>index.md</code>.</li>
+  <li>Click the pencil (<span class="ui">Edit this file</span>) and make the change in the same style as in <a href="#fix">section 5</a>. Change only what the request asks for.</li>
+  <li>Click <span class="ui">Commit changes</span>, choose <span class="ui">Create a new branch for this commit and start a pull request</span>, and confirm.</li>
+  <li>Give the pull request a title starting "Edit:" and the entry's name. In the description, put <code>Closes #</code> followed by the issue's number on a line of its own. Click <span class="ui">Create pull request</span>, then add the label <code>content:edit-request</code> from the sidebar.</li>
+</ol>
+<p><strong>Handing it to an AI assistant:</strong> use whichever assistant the person who manages the repository has chosen, such as Claude, ChatGPT or GitHub Copilot's repository agent. Nothing is connected by default, so ask the technical maintainer if you're not sure which one. Give the assistant the link to the issue and the seven-step recipe in the repository's <code>docs/edit-requests.md</code>, and ask it to follow the recipe. It opens a pull request titled "Edit:" plus the entry's name, which changes the entry's file and says "Closes #" with the issue's number.</p>
+
+<h3>Reviewing and merging</h3>
+<ol>
+  <li>Open the pull request's <span class="ui">Files changed</span> tab. Only the entry's <code>index.md</code> should change, and only in the way the request asked. Watch for anything made up, such as a date, figure, name or link that isn't in the request. An assistant should list anything it was unsure about in the description.</li>
+  <li>Wait for <span class="ui">Content: entries and site build</span> to go green, then merge, as in <a href="#publish">section 6</a>. You don't need to change <code>review_status</code>, because the entry is already published.</li>
+  <li>Merging closes the issue, because the pull request says "Closes #…". If the issue is still open afterwards, close it yourself.</li>
+  <li>Once the site has rebuilt, open the entry page and check the change.</li>
+</ol>
+
+<div class="callout warn">
+  <strong>Closing an edit pull request tells the requester no</strong>
+  <p>If an edit pull request isn't right, fix its file (<a href="#fix">section 5</a>) or ask the assistant to correct the same pull request. Closing it without merging tells the requester their edit was turned down, just as closing a draft does.</p>
+</div>
+
+<h3>Turning a request down</h3>
+<ol>
+  <li>Comment on the issue giving the reason. The requester can read it, so keep it kind and leave out anything personal.</li>
+  <li>In the sidebar, under <span class="ui">Labels</span>, remove <code>status:received</code> and add <code>status:declined</code>.</li>
+  <li>Click the arrow next to <span class="ui">Close issue</span> and choose <span class="ui">Close as not planned</span>.</li>
+</ol>
+<p>Nothing is sent automatically when you close the issue, so your comment is the requester's answer.</p>
+
+<h3>"Report a problem with the site"</h3>
+<p>The site's footer has a separate <span class="ui">Report a problem with the site</span> link. It opens a general form, and the issue's title starts "Site problem:". These reports are about the site itself, not about what an entry says, so they aren't edit requests. Pass them to the technical maintainer.</p>
+
+<!-- ============================================================ -->
+<h2 id="checks">9. Red checks and bot pull requests</h2>
+
+<h3>Red checks</h3>
+<p>On a submission draft, only one check matters: <span class="ui">Content: entries and site build</span>. It's the only one required before you can merge. It builds the whole site with the new entry in it. A bot opens each draft, so the site starts this check by itself, and it appears in the draft's list of checks a few minutes later. The site's code checks (CodeQL, Lint, Quality, Performance and Supply chain) are switched off on this repository. If other names appear in the list, you can ignore them.</p>
+<p>A red <span class="ui">Content: entries and site build</span> almost always means something in the entry is wrong. The usual causes are a blank required answer, an answer that isn't one of the options, or a link that doesn't start with https://.</p>
+<ol>
+  <li>Click <span class="ui">Details</span> next to the red <span class="ui">Content: entries and site build</span>.</li>
+  <li>If the page that opens lists several jobs on the left, click <span class="ui">Content: entries and site build</span>.</li>
+  <li>Open the step <span class="ui">Validate data files, front matter and file sizes</span>.</li>
+  <li>Under <strong>Front matter validation failed</strong>, each line names a field that needs fixing. Lines that start with "Warning" don't block publishing.</li>
+  <li>Fix the field in the entry file (<a href="#fix">section 5</a>).</li>
+</ol>
+<p>If that step passed and the check is still red, the problem isn't one you can fix in the entry. Leave a comment for the technical maintainer and don't merge. Tell them too if the check hasn't appeared after half an hour.</p>
+
+<h3>Pull requests from bots</h3>
+<p>Some pull requests are the site's own housekeeping, such as "Refresh catalog metrics", "Refresh the security signals", "Stamp updated dates on edited entries", Dependabot's "chore(deps): …" and "Update PHCT to v…". Leave them to the technical maintainer, and don't close them. To stop getting emails about one, open it and click <span class="ui">Unsubscribe</span> in the sidebar.</p>
+
+<figure>
+  <img src="img/23-bot-prs.png" alt="The Pull requests list showing bot pull requests such as Refresh catalog metrics and Refresh the security signals next to an Add entry draft.">
+  <figcaption>Figure 8. Only the "Add entry" drafts need you.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="requests">10. Refresh and "also deployed by" requests</h2>
+
+<p>Two kinds of small request concern entries that are already published. Each arrives as an issue. You check its draft and merge or close it, just like a new entry.</p>
+<ul>
+  <li><strong>Refresh</strong> (the issue title starts "Refresh:"): someone confirms an entry is still accurate. Once a year the site asks each entry's submitter to do this. If the answer is "Yes", the draft, "Confirm entry … as still accurate", changes one date. Check the person is someone whose word you'd take, then merge. If the answer is "No, something changed", there's no draft. The bot labels the issue <code>review:refresh-changes</code> and quotes what changed. Contact the submitter, then pass the change to the technical maintainer to make.</li>
+  <li><strong>Also deployed by</strong> (the title starts "Also deployed by:"): another organization says it runs the same thing. The draft adds one row to the entry. Check that the organization is real, the link works and is theirs, and any email address is one they're happy to make public. Then merge. To turn one down, comment with a reason and close the draft.</li>
+</ul>
+
+<section class="cheat" id="cheat-sheet" aria-labelledby="cheat-heading">
+  <h2 id="cheat-heading">Cheat sheet: publishing a submission</h2>
+  <p>Repository: github.com/Big-Cities-Health-Coalition/use-case-catalog · Waiting drafts: Pull requests tab, search <code>is:open label:"content:new-entry"</code></p>
+
+  <div class="cols">
+    <div>
+      <h3>1. Open it</h3>
+      <ol>
+        <li>Open the new issue from GitHub's email.</li>
+        <li>Follow the bot comment's link to the draft ("Add entry: …").</li>
+      </ol>
+
+      <h3>2. Check it</h3>
+      <ul>
+        <li>Read the preview and work through the Maintainer checklist.</li>
+        <li><strong>Closer review</strong> block: read with extra care.</li>
+        <li><strong>Answers to fix</strong> block: put in the right option.</li>
+        <li>No personal or health data in the text, links or screenshots. Open each picture at full size.</li>
+        <li>Links work in a private window.</li>
+        <li>A contact name and an email address that will last.</li>
+      </ul>
+
+      <h3>3. Fix it (if needed)</h3>
+      <ol>
+        <li>Contact the submitter using the details in the submission.</li>
+        <li>Files changed → entry file → … → <strong>Edit file</strong>.</li>
+        <li>Make the change, then <strong>Commit changes</strong> to the draft's branch.</li>
+        <li>Always fix in the file, never on the issue.</li>
+      </ol>
+
+      <h3>Edit request</h3>
+      <p>Issue labelled <code>content:edit-request</code>. Owner or reader? Check bigger changes with the entry's contact. Edit <code>catalog/&lt;slug&gt;/index.md</code> yourself, or give an AI assistant the issue and <code>docs/edit-requests.md</code>. Review and merge its pull request ("Closes #…"). To decline: comment, swap to <code>status:declined</code>, close as not planned.</p>
+    </div>
+    <div>
+      <h3>4. Publish it</h3>
+      <ol>
+        <li>Edit the file: <code>review_status: "Reviewed &amp; approved"</code>.</li>
+        <li>Wait until <strong>Content: entries and site build</strong> is green (10–20 minutes). Ignore <strong>Update branch</strong>.</li>
+        <li><strong>Merge</strong>.</li>
+        <li>Wait for the "Your entry is now live at …" comment. Open the link and check the page.</li>
+      </ol>
+
+      <h3>Or don't publish it</h3>
+      <ol>
+        <li>Comment on the draft with a one-line reason.</li>
+        <li><strong>Close pull request</strong>. Don't merge. The submitter is told.</li>
+      </ol>
+
+      <h3>Red check</h3>
+      <p>Content: entries and site build → Details → "Validate data files, front matter and file sizes" → read the lines under "Front matter validation failed" → fix that field in the file. If that step passed, tell the technical maintainer. Other checks don't matter.</p>
+
+
+      <h3>Leave alone</h3>
+      <p>Bot pull requests: metrics, security signals, date stamps, Dependabot, PHCT updates.</p>
+
+      <h3>Tell the technical maintainer</h3>
+      <p>No bot comment after 10 minutes · no "now live" comment after 30 minutes · personal data found on a published page (at once).</p>
+    </div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>
