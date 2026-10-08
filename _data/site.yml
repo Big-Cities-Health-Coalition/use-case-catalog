@@ -122,6 +122,12 @@ footer:
   # Leave blank to omit the line.
   accessibility: "This site is built to WCAG 2.1 AA and tested on every build; if something does not work for you, tell us and it will be treated as a defect."
 
+# Submitter notifications: the comments on a submission's issue. Everything is
+# optional; see "Submitter notifications" in docs/configuration.md.
+notifications:
+  logo: "/assets/images/bchc-logo-mark-144.png"
+  logo_alt: "Big Cities Health Coalition"
+
 # Optional analytics snippet id (leave blank to disable). Example: Plausible domain.
 analytics:
   plausible_domain: ""
