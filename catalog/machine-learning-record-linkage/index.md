@@ -6,48 +6,56 @@ slug: machine-learning-record-linkage
 published: "2026-10-05"
 featured: false
 thumbnail: ""
-organization: ""
-solution_type: []
-sharing: ""
-use_case_category: ""
-area: []
-stage: ""
-summary: ""
+organization: "Public Health – Seattle & King County"
+solution_type:
+  - "AI/ML model"
+sharing: "Open-source code"
+use_case_category: "Administrative & task automation"
+area:
+  - "Data modernization and informatics"
+stage: "In production"
+summary: "Efficient and accurate way to link identities across datasets"
 impact: ""
 review_status: Under review
-ai_role: ""
+ai_role: "AI is part of the solution"
 ai_types: []
-ai_tools: []
-platform: []
+ai_tools:
+  - "R"
+platform:
+  - "Desktop or local"
 vendor: ""
-expertise: ""
-readiness: []
-repo_url: ""
+expertise: "Analyst or data scientist"
+readiness:
+  - "Needs customization"
+repo_url: "https://github.com/PHSKC-APDE/hyrule"
 demo_url: ""
 docs_url: ""
 resources: []
 screenshots: []
-deck_pdf: "/catalog/machine-learning-record-linkage/deck.pdf"
+deck_pdf: ""
 also_deployed_by: []
-license: ""
+license: "GPL / AGPL"
 access_terms: ""
-portability: ""
-portability_notes: ""
+portability: "Yes — platform-agnostic"
+portability_notes: "Runs on a desktop or laptop; could be deployed into any VM or adapted for platforms such as Databricks."
 reused_from: []
-cost_band: ""
-run_cost: ""
-procurement: []
-approvals: []
+cost_band: "No new spend"
+run_cost: "No ongoing cost"
+procurement:
+  - "Grant funded"
+approvals:
+  - "None required"
 equity_note: ""
-no_pii_attestation: false
-data_sensitivity: []
+no_pii_attestation: true
+data_sensitivity:
+  - "Personal information (PII)"
 data_sources: []
-audience: ""
+audience: "Internal staff"
 data_governance_notes: ""
 security_review: ""
-contact_name: ""
-contact_title: ""
-contact_email: ""
+contact_name: "Alastair Matheson"
+contact_title: "Data Modernization Director"
+contact_email: "alastair.matheson@kingcounty.gov"
 submitter_github: ""
 ---
 
