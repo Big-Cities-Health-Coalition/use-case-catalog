@@ -113,6 +113,10 @@ export const SITE = {
     "copyright": "Big Cities Health Coalition",
     "accessibility": "This site is built to WCAG 2.1 AA and tested on every build; if something does not work for you, tell us and it will be treated as a defect."
   },
+  "notifications": {
+    "logo": "/assets/images/bchc-logo-mark-144.png",
+    "logo_alt": "Big Cities Health Coalition"
+  },
   "analytics": {
     "plausible_domain": ""
   }
