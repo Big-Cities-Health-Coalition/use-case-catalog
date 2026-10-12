@@ -195,6 +195,16 @@
   <figcaption>Figure 4. The bot's comment on a new issue links to the draft.</figcaption>
 </figure>
 
+<h3>An issue that didn't come through the form</h3>
+<p>Sometimes a person opens an issue on GitHub directly instead of using the Submit page. If they aren't a member of the repository, the bot replies within a few minutes. It thanks them, gives the issue's number and says a maintainer will read it and reply there. It also adds the label <code>needs-triage</code>. No draft is made. To see every one waiting, open the <span class="ui">Issues</span> tab and search for <code>is:open label:needs-triage</code>.</p>
+<p>Read the issue, then:</p>
+<ul>
+  <li><strong>If it's something they want to share in the catalog,</strong> comment with a link to the catalog's Submit page and ask them to send it through there. Only the form creates a draft you can review and publish. Close the issue once they've resubmitted.</li>
+  <li><strong>If it's a problem with the site</strong> (reports from the footer's <span class="ui">Report a problem with the site</span> link get this label too), pass it to the technical maintainer, as in <a href="#edit-requests">section 8</a>.</li>
+  <li><strong>If it isn't a submission at all,</strong> such as a question or spam, reply if it needs an answer. Then click the arrow next to <span class="ui">Close issue</span> and choose <span class="ui">Close as not planned</span>.</li>
+</ul>
+<p>If the bot's reply says instead that a label is missing, the person used the form but something behind it needs fixing. Pass the issue to the technical maintainer.</p>
+
 <!-- ============================================================ -->
 <h2 id="check">4. Checking it</h2>
 
@@ -239,7 +249,11 @@
   <li>Click <span class="ui">Commit changes</span>. Leave it committing to the draft's own branch, which is the default, and confirm.</li>
 </ol>
 <p>The check runs again on its own.</p>
-<p>Always make fixes in the file. Editing the issue afterwards doesn't change the draft.</p>
+<p>Always make your fixes in the file. The submitter can still edit their issue, and what happens then depends on whether anyone has committed to the draft yet:</p>
+<ul>
+  <li><strong>Before anyone has committed to it,</strong> the bot rebuilds the draft from the edited answers. Nothing is lost, because the draft holds only what the bot wrote.</li>
+  <li><strong>Once you've committed a fix</strong> (pressing <span class="ui">Update branch</span> counts too), editing the issue no longer changes the draft, because a rebuild would erase your work. Instead, the bot comments on the draft listing which answers changed, before and after. Copy into the file whatever should be kept.</li>
+</ul>
 
 <figure>
   <img src="img/11-pr-files-changed.png" alt="The Files changed tab of a draft, showing the entry file with one answer per line and the menu open on Edit file.">
@@ -250,11 +264,17 @@
 <h2 id="publish">6. Publishing</h2>
 
 <ol>
-  <li><strong>Mark it reviewed.</strong> Edit the entry file as in <a href="#fix">section 5</a>. Change <code>review_status: "Under review"</code> to <code>review_status: "Reviewed &amp; approved"</code> and commit. Otherwise the published page says "Under review".</li>
-  <li><strong>Wait for the check.</strong> The one that matters is <span class="ui">Content: entries and site build</span>, and it takes about ten to twenty minutes. The merge button stays grey until it's green. If GitHub also offers an <span class="ui">Update branch</span> button, ignore it. The draft doesn't need it.</li>
+  <li><strong>Mark it reviewed.</strong> Edit the entry file as in <a href="#fix">section 5</a>. Change <code>review_status: "Under review"</code> to <code>review_status: "Reviewed &amp; approved"</code> and commit. Otherwise the published page says "Under review". Leave it as "Under review" only when the committee has decided to publish an entry early while its review carries on.</li>
+  <li><strong>Wait for the check.</strong> The one that matters is <span class="ui">Content: entries and site build</span>, and it takes about ten to twenty minutes. The merge button stays grey until it's green and the draft is approved (next step). If GitHub also offers an <span class="ui">Update branch</span> button, ignore it. The draft doesn't need it.</li>
+  <li><strong>Approve it.</strong> Every draft needs one approving review before it can be merged. On the draft, open <span class="ui">Files changed</span>, click <span class="ui">Review changes</span>, choose <span class="ui">Approve</span> and click <span class="ui">Submit review</span>. You can do this while the check runs. If you change the file again afterwards, GitHub may ask you to approve again.</li>
   <li><strong>Merge</strong> with the green button on the Conversation tab, and confirm. Any of GitHub's merge options works.</li>
   <li><strong>Confirm it's live.</strong> A few minutes after you merge, the issue closes. Once the site has rebuilt, the bot comments "Your entry is now live at …" with a link. Open the link and check the page. If there's no comment after half an hour, tell the technical maintainer.</li>
 </ol>
+
+<div class="callout warn">
+  <strong>Don't use the bypass option</strong>
+  <p>Because you're a repository admin, GitHub also shows you a tick box to merge without waiting for the requirements to be met ("bypass rules"). Leave it unticked. There is one exception. GitHub won't let you approve a change you made yourself, such as a pull request you opened for an edit request. Ask the technical maintainer to approve it, and use the bypass only if nobody else is available.</p>
+</div>
 
 <!-- ============================================================ -->
 <h2 id="not-publishing">7. Not publishing</h2>
@@ -295,7 +315,7 @@
 <h3>Reviewing and merging</h3>
 <ol>
   <li>Open the pull request's <span class="ui">Files changed</span> tab. Only the entry's <code>index.md</code> should change, and only in the way the request asked. Watch for anything made up, such as a date, figure, name or link that isn't in the request. An assistant should list anything it was unsure about in the description.</li>
-  <li>Wait for <span class="ui">Content: entries and site build</span> to go green, then merge, as in <a href="#publish">section 6</a>. You don't need to change <code>review_status</code>, because the entry is already published.</li>
+  <li>Wait for <span class="ui">Content: entries and site build</span> to go green, approve the pull request and merge it, as in <a href="#publish">section 6</a>. If you opened it yourself, ask the technical maintainer to approve it. You don't need to change <code>review_status</code>, because the entry is already published.</li>
   <li>Merging closes the issue, because the pull request says "Closes #…". If the issue is still open afterwards, close it yourself.</li>
   <li>Once the site has rebuilt, open the entry page and check the change.</li>
 </ol>
@@ -320,7 +340,7 @@
 <h2 id="checks">9. Red checks and bot pull requests</h2>
 
 <h3>Red checks</h3>
-<p>On a submission draft, only one check matters: <span class="ui">Content: entries and site build</span>. It's the only one required before you can merge. It builds the whole site with the new entry in it. A bot opens each draft, so the site starts this check by itself, and it appears in the draft's list of checks a few minutes later. The site's code checks (CodeQL, Lint, Quality, Performance and Supply chain) are switched off on this repository. If other names appear in the list, you can ignore them.</p>
+<p>On a submission draft, only one check matters: <span class="ui">Content: entries and site build</span>. It's the only check required before you can merge. It builds the whole site with the new entry in it. A bot opens each draft, so the site starts this check by itself, and it appears in the draft's list of checks a few minutes later. The site's code checks (CodeQL, Lint, Quality, Performance and Supply chain) are switched off on this repository. If other names appear in the list, you can ignore them. Besides the check, a draft needs an approving review before it can be merged (<a href="#publish">section 6</a>).</p>
 <p>A red <span class="ui">Content: entries and site build</span> almost always means something in the entry is wrong. The usual causes are a blank required answer, an answer that isn't one of the options, or a link that doesn't start with https://.</p>
 <ol>
   <li>Click <span class="ui">Details</span> next to the red <span class="ui">Content: entries and site build</span>.</li>
@@ -378,6 +398,9 @@
         <li>Always fix in the file, never on the issue.</li>
       </ol>
 
+      <h3>Issue labelled <code>needs-triage</code></h3>
+      <p>It didn't come through the form. Something to share: ask them to use the Submit page. Site problem: tell the technical maintainer. Anything else: reply if needed, then close as not planned.</p>
+
       <h3>Edit request</h3>
       <p>Issue labelled <code>content:edit-request</code>. Owner or reader? Check bigger changes with the entry's contact. Edit <code>catalog/&lt;slug&gt;/index.md</code> yourself, or give an AI assistant the issue and <code>docs/edit-requests.md</code>. Review and merge its pull request ("Closes #…"). To decline: comment, swap to <code>status:declined</code>, close as not planned.</p>
     </div>
@@ -386,7 +409,8 @@
       <ol>
         <li>Edit the file: <code>review_status: "Reviewed &amp; approved"</code>.</li>
         <li>Wait until <strong>Content: entries and site build</strong> is green (10–20 minutes). Ignore <strong>Update branch</strong>.</li>
-        <li><strong>Merge</strong>.</li>
+        <li>Approve: Files changed → <strong>Review changes</strong> → <strong>Approve</strong> → <strong>Submit review</strong>.</li>
+        <li><strong>Merge</strong>. Leave the bypass box unticked. Only use it for a change you made yourself, when nobody else can approve it.</li>
         <li>Wait for the "Your entry is now live at …" comment. Open the link and check the page.</li>
       </ol>
 

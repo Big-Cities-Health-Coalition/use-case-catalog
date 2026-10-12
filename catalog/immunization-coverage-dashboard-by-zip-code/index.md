@@ -6,6 +6,7 @@ slug: immunization-coverage-dashboard-by-zip-code
 published: "2026-09-28"
 updated: 2026-09-28
 featured: false
+sample: true
 thumbnail: ""
 organization: Lakeshore City Department of Public Health
 solution_type:

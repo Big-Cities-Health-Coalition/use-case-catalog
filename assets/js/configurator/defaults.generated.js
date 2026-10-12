@@ -552,7 +552,7 @@ export const SCHEMA = {
           "description": "Passed intake and Governance Committee review."
         },
         "Under review": {
-          "description": "Published provisionally while the committee reviews it."
+          "description": "Published early, on purpose, while the committee's review continues."
         },
         "Revisions requested": {
           "short": "Revisions",

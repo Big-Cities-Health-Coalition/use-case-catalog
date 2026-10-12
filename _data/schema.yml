@@ -380,7 +380,7 @@ fields:
       - "Deprecated"
     option_meta:
       "Reviewed & approved": { short: "Approved", tone: primary, description: "Passed intake and Governance Committee review." }
-      "Under review": { description: "Published provisionally while the committee reviews it." }
+      "Under review": { description: "Published early, on purpose, while the committee's review continues." }
       "Revisions requested": { short: "Revisions", tone: warn, description: "The committee has asked the submitter for changes." }
       "Not yet reviewed": { short: "Unreviewed", tone: warn, description: "Listed before any review took place." }
       "Deprecated": { tone: warn, description: "No longer maintained or accurate — kept for the record." }

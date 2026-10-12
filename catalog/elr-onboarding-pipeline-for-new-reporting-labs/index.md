@@ -6,6 +6,7 @@ slug: elr-onboarding-pipeline-for-new-reporting-labs
 published: "2026-09-28"
 updated: 2026-09-28
 featured: false
+sample: true
 thumbnail: ""
 organization: Harbor City Department of Public Health
 solution_type:

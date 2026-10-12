@@ -6,6 +6,7 @@ slug: wastewater-surveillance-trend-alerts
 published: "2026-08-26"
 updated: 2026-09-28
 featured: false
+sample: true
 thumbnail: ""
 organization: Harborview Metro Health District
 solution_type:
