@@ -1,6 +1,6 @@
 {
   "name": "phct",
-  "version": "1.11.0-rc.5",
+  "version": "1.11.0-rc.7",
   "private": true,
   "packageManager": "npm@10.9.4",
   "engines": {
@@ -63,7 +63,7 @@
     "postcss": "^8.5.28",
     "postcss-cli": "^12.0.0",
     "prettier": "^3.9.9",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.4.14",
     "yaml": "^2.9.1"
   }

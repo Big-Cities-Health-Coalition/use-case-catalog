@@ -1,7 +1,7 @@
 /**
  * The "Apply setup" issue is the only path into this repository that rewrites
  * the site's own configuration, so these tests hold the two ends of it
- * together: the section labels in `.github/ISSUE_TEMPLATE/apply-setup.yml`
+ * together: the section labels in `scripts/issue-forms/apply-setup.yml`
  * against the ones `scripts/apply_setup_from_issue.mjs` looks for (a form and a
  * parser that disagree fail silently, with an empty pull request), and the
  * refusals — bad YAML, an invalid schema, an unreadable palette — which have to
@@ -28,7 +28,9 @@ import {
 import { defaultConfig } from '../../assets/js/configurator/default-config.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const FORM_PATH = '.github/ISSUE_TEMPLATE/apply-setup.yml';
+// The source: npm run generate copies it into .github/ISSUE_TEMPLATE/ only while
+// setup forms are on (test/scripts/optional_issue_forms.test.mjs).
+const FORM_PATH = 'scripts/issue-forms/apply-setup.yml';
 const form = yaml.load(fs.readFileSync(path.join(ROOT, FORM_PATH), 'utf8'));
 const shipped = defaultConfig();
 

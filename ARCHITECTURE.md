@@ -54,8 +54,10 @@ presentation hints (`facet`, `card`, `search`, `weight`, `icon`, `group`,
 - `scripts/lib/review.mjs` — what the scaffolded pull request tells its reviewer: which answers
   the schema escalates, and the checklist (criteria from `_data/governance.yml`).
 - `scripts/generate.mjs` — regenerates `.github/ISSUE_TEMPLATE/new-entry.yml`, syncs `_config.yml`
-  title/description, and builds `assets/js/configurator/defaults.generated.js`. Run it after every
-  schema edit; `node scripts/generate.mjs --check` fails CI when the committed outputs are stale.
+  title/description, builds `assets/js/configurator/defaults.generated.js`, renders the issue
+  chooser (`config.yml`), and writes or deletes the optional issue forms from
+  `scripts/issue-forms/` (`scripts/lib/optional_issue_forms.mjs`) to match `_data/site.yml`. Run it
+  after every schema or site.yml edit; `node scripts/generate.mjs --check` fails CI when the committed outputs are stale.
 
 The rule of thumb: if you find yourself typing a field key into a template or script, stop and add
 a hint to the schema instead. `docs/content-model.md` documents each hint's exact meaning.
@@ -110,7 +112,7 @@ run identically in tests.
 |---|---|---|---|
 | `new-entry.yml` | issue labelled `content:new-entry` | `scripts/new_entry_from_issue.mjs` (+ `lib/issue_body`, `lib/images`, `lib/yaml`, `lib/review` for the checklist and `escalate_on`) | PR adding `catalog/<slug>/` with downloaded screenshots, the maintainer checklist and `review:*` labels |
 | `thumbnails.yml` | PR touching `catalog/**` | `scripts/thumbnail_sources.mjs` + `pdftoppm` | commits `thumb.jpg` from `deck.pdf` |
-| `new-event.yml`, `new-year.yml`, `update-schedule.yml`, `update-event-attachments.yml` | issue templates for the events/cohorts modules | matching `scripts/*` | PRs against `_data/` |
+| `new-event.yml`, `new-year.yml`, `update-schedule.yml`, `update-event-attachments.yml` | issues from the cohort forms (in the chooser only while `modules.cohorts` is on; `generate.mjs` writes them from `scripts/issue-forms/`) | matching `scripts/*` | PRs against `_data/` |
 | `refresh-entry.yml` | issue labelled `content:refresh` | `scripts/refresh_entry_from_issue.mjs` | "still accurate" → PR stamping the entry's `verified:` date; "needs updates" → the reported changes are labelled `review:refresh-changes` for the maintainer queue |
 | `edit-request.yml` | issue labelled `content:edit-request` | `scripts/lib/edit_request.mjs` | an acknowledgement with the `/status/` link and `status:received`; no pull request, because a maintainer (or an agent they assign) makes the edit by hand ([docs/edit-requests.md](docs/edit-requests.md)) |
 | `also-deployed-by.yml` | issue labelled `content:also-deployed-by` | `scripts/add_deployment_from_issue.mjs` | PR appending an organization to the entry's `entry.deployments_key` list |

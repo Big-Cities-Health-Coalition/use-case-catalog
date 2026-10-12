@@ -24,7 +24,11 @@ file, it almost always actually needs a `_data/*.yml` key that already exists �
 `docs/configuration.md` before touching template code. Files under
 `ownership.generated` (`.github/ISSUE_TEMPLATE/new-entry.yml`,
 `assets/js/configurator/defaults.generated.js`, `_config.yml`'s synced fields) are
-rebuilt by `npm run generate` — never hand-edit them.
+rebuilt by `npm run generate` — never hand-edit them. The same command adds and
+removes the optional issue forms — the four cohort forms while `modules.cohorts` is
+on, Apply setup while setup is in progress (`github.setup_forms`, or `demo`) — from
+template-owned sources in `scripts/issue-forms/`. To take a form out of the issue
+chooser, change `_data/site.yml` and regenerate; never delete the file by hand.
 
 The second rule, inherited from the template: `_data/schema.yml` defines the entry
 content model, and every layout, script and workflow reads field definitions from it.
@@ -68,9 +72,9 @@ npm run validate         # the same gate CI runs on every PR — must pass befor
 
 `npm run setup` writes the seven configuration files consistently
 (`_data/site.yml`, `_data/theme.yml`, `_data/schema.yml`, `_data/navigation.yml`,
-`_config.yml`, both issue templates). You can also edit the `_data/*.yml` files
-directly — they are commented for exactly that — but then `npm run generate` and
-`npm run validate` are on you. `npm run doctor` diagnoses a toolchain that can't run
+`_config.yml`, both issue templates), then runs `npm run generate`. You can also edit
+the `_data/*.yml` files directly — they are commented for exactly that — but then
+`npm run generate` and `npm run validate` are on you. `npm run doctor` diagnoses a toolchain that can't run
 the gate.
 
 When the user's answers are in place:
@@ -78,6 +82,7 @@ When the user's answers are in place:
 ```sh
 npm run eject:samples -- --dry-run   # list the demo content (fictional orgs) first
 npm run eject:samples                # remove it, set demo: false
+npm run generate                     # drops the Apply setup form and Launch checklist link
 ```
 
 Keep one sample entry until a real one exists — an empty catalog is harder to verify.

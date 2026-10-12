@@ -1,5 +1,5 @@
 name: Documentation correction
-description: Report unclear, incomplete, inaccurate, or outdated PHCT guidance.
+description: Report unclear, incomplete, inaccurate, or outdated guidance on this site or in its repository.
 title: "[Docs] "
 labels: [documentation]
 body:

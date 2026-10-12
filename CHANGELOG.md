@@ -8,6 +8,95 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.7] — 2026-10-12
+
+Seventh candidate. rc.6 failed closed in BCHC on a build test that assumed the
+deployment's own `site.yml` leaves analytics off (nothing was published). This
+candidate fixes that test (#103) and otherwise carries rc.6 unchanged.
+
+### Fixed
+
+- A deployment with `analytics.plausible_domain` set could not update to rc.6:
+  a build test assumed the repository's own `site.yml` leaves analytics off,
+  which holds only for the template. The test now checks that the Plausible
+  script and queue stub render exactly when that file sets a domain.
+
+## [1.11.0-rc.6] — 2026-10-12
+
+Sixth candidate. rc.5's live BCHC update passed and deployed. This candidate
+counts *Send to GitHub* presses as a Plausible event on sites with analytics on
+(#97), announces every submission a deploy publishes rather than only its own
+push (#98), shows on GitHub's New issue page only the forms a deployment uses
+(#100) and updates `sharp` for GHSA-wq5f-xc86-pv6w (#99).
+
+### Added
+
+- **Count submissions handed to GitHub.** With `analytics.plausible_domain` set,
+  the submit page now sends a Plausible custom event named `Send to GitHub`
+  when a submitter presses that button and GitHub's prefilled issue form opens.
+  It is not sent while validation blocks the form, when a pop-up blocker stops
+  the tab, or when the answers are too long for a link. No answers or custom
+  properties are attached to it. `_includes/head.html` adds Plausible's queue
+  stub after its script tag so the event is not lost while the script loads. To
+  see the count, add a custom-event goal named `Send to GitHub` in Plausible.
+  Sites with analytics off load and send nothing, as before. See
+  [Analytics](docs/configuration.md#analytics).
+
+### Changed
+
+- **GitHub's New issue page follows the site's configuration.** The four cohort
+  forms (`new-year.yml`, `schedule.yml`, `new-event.yml`,
+  `update-event-attachments.yml`) now exist only while `modules.cohorts` is on,
+  and the maintainer-only *Apply setup* form and the *Launch checklist* link in
+  `config.yml` only while setup is in progress. Their sources moved to
+  `scripts/issue-forms/`; `npm run generate` copies in the ones the site uses
+  and deletes the rest, and `generate --check` (and so `npm run verify`) fails
+  when the set is out of step either way. Setup in progress means `demo: true`
+  unless the new optional `github.setup_forms: true|false` says otherwise.
+  `npm run setup` now runs `generate` once it has written its files, and its
+  `--dry-run` lists what `generate` would then add, change or delete.
+  `/setup/`'s review step lists the forms a change adds or retires after the
+  files to paste: each new form has a *Create on GitHub* link that opens
+  GitHub's new-file page filled in with what `generate` would write, and each
+  retired one a *Delete on GitHub* link, so a site without a terminal can make
+  the change in GitHub's editor. **Bootstrap labels** links its welcome issue to `_data/site.yml` when the
+  *Apply setup* form is gone. The bug, feature, documentation and accessibility
+  forms are reworded to describe this site rather than PHCT: the bug form asks
+  *Where it happens* instead of requiring a PHCT release, which is now an
+  optional maintainers' field. See
+  [GitHub repository](docs/configuration.md#github-repository).
+  **Upgrade note:** the update PR runs `generate` as usual, so on a deployment
+  with `modules.cohorts: false` and `demo: false` it deletes those five forms
+  and drops the *Launch checklist* link from `.github/ISSUE_TEMPLATE/config.yml`;
+  with cohorts on, the cohort forms stay and only gain a generated-file header.
+  A finished deployment that still has `demo: true` keeps *Apply setup* and the
+  link until it sets `demo: false` (after ejecting the samples) or
+  `github.setup_forms: false` and runs `npm run generate`. Nothing else needs a
+  hand edit; do not restore a deleted form by hand, since `generate --check`
+  will flag it.
+
+### Fixed
+
+- Merging two submissions in quick succession left the first submitter without
+  their "Your entry is now live" comment. `pages.yml` cancels a deploy still in
+  progress when a newer push reaches `main`, and the deploy that finished only
+  announced the pull request its own commit belonged to. The `announce` job now
+  covers every pull request merged since the last successful `Build & Deploy`
+  run on `main`, each with its own entry's address, and still posts at most
+  once per issue, so a re-run or an overlapping deploy repeats nothing. It falls
+  back to announcing only its own push when there is no earlier successful run,
+  more than 100 commits landed in between, or the run history cannot be read,
+  and a submission that cannot be updated is a warning that no longer stops the
+  rest. The job gains `actions: read` to find that run. See
+  [Troubleshooting](docs/admin-guide.md#troubleshooting).
+
+### Security
+
+- `sharp` is updated from 0.35.4 to 0.35.5, which fixes GHSA-wq5f-xc86-pv6w
+  (high: CVE-2026-96889 in the bundled librsvg). The advisory failed
+  `npm run security:audit`. `sharp` is a dev-only dependency used to render
+  the template's images; the published site does not ship it.
+
 ## [1.11.0-rc.5] — 2026-10-06
 
 Fifth candidate. rc.4's live BCHC update passed and deployed. This candidate makes
@@ -1559,7 +1648,9 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.7...HEAD
+[1.11.0-rc.7]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.6...v1.11.0-rc.7
+[1.11.0-rc.6]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...v1.11.0-rc.6
 [1.11.0-rc.5]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...v1.11.0-rc.5
 [1.11.0-rc.4]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.3...v1.11.0-rc.4
 [1.11.0-rc.3]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...v1.11.0-rc.3

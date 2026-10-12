@@ -267,12 +267,16 @@ jobs:
   # A contributor opens an issue, a bot says a pull request is open, and then
   # nothing — their entry goes live and they are never told. For a catalog that
   # runs on peer contribution that message is the whole retention mechanism, so
-  # it is sent from the deploy that actually published the page.
+  # it is sent from the deploy that actually published the page. The
+  # concurrency group above cancels a deploy when a newer push arrives, so the
+  # one that finishes covers every pull request merged since the last
+  # successful deploy (`actions: read` finds that run), not only its own.
   announce:
     needs: deploy
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       issues: write
       pull-requests: read
@@ -303,9 +307,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
 
-      # Marks each merged submission's issue status:published and, for a new
-      # entry, says where it is live (once per issue; a re-run deploy does not
-      # repeat it). Wording: scripts/lib/notify.mjs.
+      # Marks each submission merged since the last successful deploy
+      # status:published and, for a new entry, says where it is live (once per
+      # issue; a re-run or overlapping deploy does not repeat it). Wording:
+      # scripts/lib/notify.mjs; the range: scripts/lib/deploy_range.mjs.
       - name: Tell the submitter their entry is live
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:

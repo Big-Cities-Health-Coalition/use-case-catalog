@@ -14,6 +14,7 @@ import { renderFiles } from '../../assets/js/configurator/render-files.js';
 import {
   slugify,
   snakeKey,
+  githubDeleteFileUrl,
   githubEditFileUrl,
   githubNewFileUrl,
   prefillNoticeIfTooLong,
@@ -236,6 +237,11 @@ test('GitHub URLs escape the branch and the path', () => {
     'https://github.com/org/repo/edit/main/_data/site.yml'
   );
   assert.equal(githubEditFileUrl('', 'main', 'x'), '', 'no repository, no link');
+  assert.equal(
+    githubDeleteFileUrl('org/repo', 'release/v2', '.github/ISSUE_TEMPLATE/new-year.yml'),
+    'https://github.com/org/repo/delete/release%2Fv2/.github/ISSUE_TEMPLATE/new-year.yml'
+  );
+  assert.equal(githubDeleteFileUrl('', 'main', 'x'), '', 'no repository, no link');
   assert.match(
     githubNewFileUrl('org/repo', 'main', '_data/site.yml', 'name: x'),
     /\?filename=_data%2Fsite\.yml&value=name/

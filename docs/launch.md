@@ -74,7 +74,7 @@ same seven files:
 
 | Path | How | Good for |
 |---|---|---|
-| Browser | Open `/setup/` on your deployed site | No terminal. Copy each generated file into GitHub's editor at the end. |
+| Browser | Open `/setup/` on your deployed site | No terminal. Copy each generated file into GitHub's editor at the end, and create or delete any issue form it lists. |
 | Browser → pull request | Open `/setup/`, then paste its files into an **Apply setup** issue | No terminal, and no hand-editing files: the answer comes back as a reviewable pull request. |
 | Terminal | `npm ci && npm run setup` | Anyone with a checkout. Writes the files directly; `npm run setup -- --preset <id> --yes` skips every prompt. |
 
@@ -132,7 +132,7 @@ Three ways to clear it, all of which do the same thing:
 
 | How | What happens |
 |---|---|
-| `npm run eject:samples` | Removes it all, sets `demo: false` and switches the `governance` module off. `--dry-run` first if you want to see the list. |
+| `npm run eject:samples` | Removes it all, sets `demo: false` and switches the `governance` module off. `--dry-run` first if you want to see the list. Run `npm run generate` afterwards. |
 | The **Apply setup** issue (step 3) | Tick **Remove the demo content**; it arrives in the same pull request as your configuration. |
 | `npm run setup` | Offers it as the last question, when you changed the entry model or picked a different preset. |
 
@@ -159,6 +159,11 @@ No terminal and not ready for the Apply setup issue? Search your repository on G
 `sample: true` (the search box at the top of the repository, scoped to "In this repository") — the
 results are the same list of folders. Delete them with the **⋯** menu → **Delete directory**, in
 one pull request so one click undoes the lot, then set `demo: false` in `_data/site.yml`.
+
+Switching the banner off also tidies GitHub's **New issue** page: the next `npm run generate`
+(the Apply setup issue and `npm run setup` run it for you) removes the Apply setup form and the
+Launch checklist link, which only a site still being set up needs. To keep the banner but drop
+them, see `github.setup_forms` in [configuration.md](configuration.md#github-repository).
 
 Keep one sample until you have published your own first entry. An empty catalog is harder to
 sanity-check than a catalog with one thing in it, and step 6 gives you a real entry to replace it

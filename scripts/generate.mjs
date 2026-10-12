@@ -9,6 +9,8 @@
  * Writes  .github/ISSUE_TEMPLATE/new-entry.yml          (public submission form)
  * Syncs   _config.yml title/description from _data/site.yml (SEO fallbacks)
  * Writes  .github/ISSUE_TEMPLATE/config.yml          (public/private report routing)
+ * Writes  .github/ISSUE_TEMPLATE/<optional form>     (only while the site uses it;
+ *         removed otherwise — cohort forms, Apply setup; see scripts/issue-forms/)
  * Syncs   _data/site.yml links into this repository's own files (footer guide link)
  *
  * Run this after hand-editing _data/schema.yml or _data/site.yml. It is
@@ -22,8 +24,18 @@ import { pathToFileURL } from 'node:url';
 import * as yaml from 'js-yaml';
 import { renderDefaults, OUTPUT_PATH as DEFAULTS_PATH } from './build_defaults.mjs';
 import { GENERATOR_OUTPUTS } from './lib/generated_paths.mjs';
-import { renderIssueChooser } from '../assets/js/configurator/issue-chooser.js';
+import {
+  OPTIONAL_ISSUE_FORMS,
+  renderIssueChooser,
+  setupFormsEnabled,
+} from '../assets/js/configurator/issue-chooser.js';
+import { pointRepositoryLinks } from './lib/generate_plan.mjs';
 import { checkIssueForms, describeIssueFormProblems } from './lib/issue_forms.mjs';
+import {
+  checkOptionalFormSources,
+  optionalFormPath,
+  planOptionalForms,
+} from './lib/optional_issue_forms.mjs';
 
 const ROOT = process.cwd();
 const [SITE_DATA_PATH, generatedDefaultsPath, ISSUE_TEMPLATE_PATH, CONFIG_PATH, CONTACT_LINKS_PATH] =
@@ -50,6 +62,21 @@ function readData(relative) {
   } catch (error) {
     abort(`Could not parse ${relative}:\n  ${error.message}`);
   }
+}
+
+/**
+ * Delete a file the configuration no longer wants — or, under `--check`, just
+ * record that it is still there.
+ */
+function remove(relative, note) {
+  const file = path.join(ROOT, relative);
+  if (!fs.existsSync(file)) return;
+  if (check) {
+    stale.push(`${relative} (should not exist: ${note})`);
+    return;
+  }
+  fs.unlinkSync(file);
+  changes.push(`removed ${relative} (${note})`);
 }
 
 /**
@@ -89,13 +116,8 @@ function sync(relative, content, note = '') {
 const repository = String(readData(SITE_DATA_PATH).github?.repository || '').trim();
 const ownRepository = /^[\w.-]+\/[\w.-]+$/.test(repository);
 if (ownRepository) {
-  const siteFile = path.join(ROOT, SITE_DATA_PATH);
-  const original = fs.readFileSync(siteFile, 'utf8');
-  const patched = original.replace(
-    /github\.com\/[\w.-]+\/[\w.-]+(?=\/(?:blob|tree|raw|edit)\/)/g,
-    `github.com/${repository}`
-  );
-  sync(SITE_DATA_PATH, patched, `repository links point at ${repository}`);
+  const original = fs.readFileSync(path.join(ROOT, SITE_DATA_PATH), 'utf8');
+  sync(SITE_DATA_PATH, pointRepositoryLinks(original, repository), `repository links point at ${repository}`);
 }
 
 // --- 1. wizard defaults, compiled from _data/*.yml --------------------------
@@ -125,13 +147,19 @@ for (const { path: where, message } of result.warnings) console.warn(`  ! ${wher
 // characters, for one) and its links then open a blank issue. The generator
 // keeps new-entry.yml inside them; this catches what it cannot (a dropdown
 // with no options) and every hand-written form beside it, before anything
-// broken is written.
+// broken is written. The optional forms (3b) are checked once each, from
+// their source, whether this site has them or not; their copies on disk are
+// about to be rewritten or removed, so the directory scan leaves them out.
 
 const fieldCount = (Array.isArray(schema.fields) ? schema.fields : []).filter((f) => f.form !== false).length;
 const issueTemplate = core.issueTemplateFromSchema(schema, site);
-const formProblems = describeIssueFormProblems(
-  checkIssueForms(ROOT, { [ISSUE_TEMPLATE_PATH]: issueTemplate })
-);
+const optionalPaths = new Set(OPTIONAL_ISSUE_FORMS.map((form) => optionalFormPath(form.file)));
+const formProblems = describeIssueFormProblems([
+  ...checkIssueForms(ROOT, { [ISSUE_TEMPLATE_PATH]: issueTemplate }).filter(
+    (form) => !optionalPaths.has(form.file)
+  ),
+  ...checkOptionalFormSources(ROOT),
+]);
 if (formProblems) {
   abort(
     `GitHub would reject these issue forms and hide them from the issue chooser:\n\n${formProblems}\n\n` +
@@ -140,6 +168,16 @@ if (formProblems) {
   );
 }
 sync(ISSUE_TEMPLATE_PATH, issueTemplate, `${fieldCount} fields`);
+
+// --- 3b. optional issue forms -----------------------------------------------
+// GitHub shows every form in .github/ISSUE_TEMPLATE/ and has no way to hide
+// one, so a form for a feature this site does not use is only absent when its
+// file is.
+
+const optionalForms = planOptionalForms(ROOT, site);
+for (const [relative, content] of Object.entries(optionalForms.write))
+  sync(relative, content, 'the site uses it');
+for (const [relative, when] of Object.entries(optionalForms.remove)) remove(relative, `${when} is off`);
 
 // --- 4. _config.yml title/description ---------------------------------------
 
@@ -161,7 +199,7 @@ if (fs.existsSync(configFile)) {
 if (ownRepository) {
   sync(
     CONTACT_LINKS_PATH,
-    renderIssueChooser(repository, site.github?.branch),
+    renderIssueChooser(repository, site.github?.branch, { setup: setupFormsEnabled(site) }),
     `routing generated for ${repository}`
   );
 }

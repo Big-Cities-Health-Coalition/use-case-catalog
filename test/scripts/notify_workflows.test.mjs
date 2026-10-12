@@ -226,6 +226,21 @@ test('submission-status.yml runs only default-branch code, for pull requests fro
   }
 });
 
+test("pages.yml's announce job can find the last successful deploy, and nothing more", () => {
+  const workflow = parse('pages.yml');
+  // A newer push cancels the deploy in progress, which is why announce reads
+  // the run history (actions: read) to cover every merge since the last success.
+  assert.equal(workflow.concurrency['cancel-in-progress'], true);
+  const job = workflow.jobs.announce;
+  assert.deepEqual(job.permissions, {
+    actions: 'read',
+    contents: 'read',
+    issues: 'write',
+    'pull-requests': 'read',
+  });
+  assert.equal(job['continue-on-error'], true, 'a courtesy comment never turns a deploy red');
+});
+
 test('Bootstrap labels creates the status and triage labels exactly as the notifier would', () => {
   const created = [
     ...source('bootstrap-labels.yml').matchAll(/^\s*create "([^"]+)"\s+"([0-9A-Fa-f]{6})"\s+"([^"]*)"/gm),

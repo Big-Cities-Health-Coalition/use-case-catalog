@@ -1,5 +1,5 @@
 name: Accessibility problem
-description: Report a barrier in PHCT or one of its generated examples.
+description: Report a barrier that makes part of this site hard or impossible to use.
 title: "[Accessibility] "
 labels: [accessibility]
 body:

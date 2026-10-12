@@ -48,8 +48,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DRY_RUN = process.argv.includes('--dry-run');
 
 /**
- * Section headings in `.github/ISSUE_TEMPLATE/apply-setup.yml`. The form is
- * hand-written rather than generated, so these two lists are the contract
+ * Section headings in `scripts/issue-forms/apply-setup.yml` (copied into
+ * `.github/ISSUE_TEMPLATE/` while setup forms are on). The form is
+ * hand-written rather than built from the schema, so these two lists are the contract
  * between it and this script; `test/scripts/apply_setup.test.mjs` asserts they
  * still agree.
  */

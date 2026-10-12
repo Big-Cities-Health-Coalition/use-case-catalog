@@ -104,8 +104,16 @@ jobs:
             // `github.repository`, and every "Submit", "Suggest an edit" and
             // "Report a problem" link on the site then points at someone else's
             // repository. Nothing else notices; the links just quietly go
-            // somewhere wrong.
-            const setup = `https://github.com/${owner}/${repo}/issues/new?template=apply-setup.yml`;
+            // somewhere wrong. The fix is the Apply setup issue while its form
+            // exists — `npm run generate` removes it once setup is finished —
+            // and otherwise the one line in _data/site.yml itself.
+            let setup = `https://github.com/${owner}/${repo}/blob/HEAD/_data/site.yml`;
+            try {
+              await github.rest.repos.getContent({ owner, repo, path: '.github/ISSUE_TEMPLATE/apply-setup.yml' });
+              setup = `https://github.com/${owner}/${repo}/issues/new?template=apply-setup.yml`;
+            } catch {
+              // No form (or no access to look): keep the file link.
+            }
             try {
               const { data: file } = await github.rest.repos.getContent({ owner, repo, path: '_data/site.yml' });
               const text = Buffer.from(file.content, 'base64').toString('utf8');

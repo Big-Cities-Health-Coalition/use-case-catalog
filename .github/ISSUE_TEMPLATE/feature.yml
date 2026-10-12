@@ -1,13 +1,13 @@
 name: Feature proposal
-description: Propose a reusable PHCT capability or product improvement.
+description: Suggest a new feature or an improvement to how this site works.
 title: "[Feature] "
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Maintainer or visitor problem
-      description: Describe the recurring task or failure, not only a preferred implementation.
+      label: Problem to solve
+      description: The task that is hard today and who runs into it — not only the change you would make.
     validations:
       required: true
   - type: textarea
@@ -23,12 +23,12 @@ body:
   - type: textarea
     id: constraints
     attributes:
-      label: Accessibility, security, performance, migration, and no-code constraints
-      description: State what must continue to work for non-technical downstream maintainers.
+      label: Constraints
+      description: Accessibility, privacy, security, or anything that must keep working for maintainers who do not write code.
   - type: checkboxes
     id: routing
     attributes:
-      label: Repository routing
+      label: Scope check
       options:
-        - label: This is reusable PHCT behavior, not only downstream content, branding, taxonomy, or policy.
+        - label: This is about how the site works, not a change to one entry (use "Suggest an edit" on the entry's page for that).
           required: true

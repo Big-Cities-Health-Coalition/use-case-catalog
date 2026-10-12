@@ -24,6 +24,16 @@ const SCRIPTS = jsYaml
   .load(fs.readFileSync(path.join(ROOT, 'submit', 'index.md'), 'utf8').split(/^---$/m)[1])
   .scripts.map((src) => src.replace(/^\//, ''));
 
+// The Plausible queue stub, as _includes/head.html renders it when
+// analytics.plausible_domain is set — read from the include, so the stub these
+// tests run is the one the site ships.
+const PLAUSIBLE_STUB = (() => {
+  const head = fs.readFileSync(path.join(ROOT, '_includes', 'head.html'), 'utf8');
+  const match = head.match(/<script>\s*(window\.plausible\s*=[\s\S]*?)<\/script>/);
+  assert.ok(match, '_includes/head.html has no Plausible queue stub');
+  return match[1];
+})();
+
 // Every booted page, closed when the file finishes. The draft's relative-time
 // clock is a live setInterval, and jsdom keeps the Node event loop alive for it
 // until its window is closed — without this the test run never exits.
@@ -33,10 +43,15 @@ test.after(() => booted.forEach((dom) => dom.window.close()));
 /**
  * A booted submit page. The scripts are evaluated only once the document is
  * complete, mirroring the deferred <script> tags the layout emits.
- * @param {{popupBlocked?: boolean, draft?: object, ui?: object}} [options]
+ * @param {{popupBlocked?: boolean, draft?: object, ui?: object,
+ *   plausible?: 'stub'|'spy'|'throws'}} [options]
  *   popupBlocked makes window.open return null the way a pop-up blocker does;
  *   draft seeds a saved draft in localStorage before the scripts boot, and ui
  *   rides beside it as the draft's stored UI state (step, short-form mode).
+ *   plausible stands in for a site with analytics on: `stub` runs the queue
+ *   stub _includes/head.html renders (Plausible's script itself never loads
+ *   here), `spy` records every call in ctx.events, `throws` throws on every
+ *   call. Left out, window.plausible is undefined, as with analytics off.
  * @returns {Promise<object>}
  */
 async function boot(options = {}) {
@@ -51,6 +66,18 @@ async function boot(options = {}) {
     opened.push(url);
     return options.popupBlocked ? null : { focus() {} };
   };
+  const events = [];
+  if (options.plausible === 'stub') window.eval(PLAUSIBLE_STUB);
+  if (options.plausible === 'spy') {
+    window.plausible = function () {
+      events.push(Array.from(arguments));
+    };
+  }
+  if (options.plausible === 'throws') {
+    window.plausible = () => {
+      throw new Error('analytics broke');
+    };
+  }
   const copied = [];
   window.navigator.clipboard = {
     writeText: (text) => {
@@ -79,6 +106,7 @@ async function boot(options = {}) {
     document: window.document,
     form,
     opened,
+    events,
     copied,
     draftKey,
     storedDraft: () => JSON.parse(window.localStorage.getItem(draftKey) || 'null'),
@@ -684,6 +712,69 @@ test('a pop-up that opens leaves the fallback hidden', async () => {
   await settle();
   sendToGitHub(ctx);
 
+  assert.equal(ctx.form.querySelector('[data-fallback-link]').hidden, true);
+});
+
+/* ------------------------------------------------- the Send to GitHub event */
+
+test('a hand-off that opens GitHub counts one Send to GitHub event, and nothing else', async () => {
+  const ctx = await boot({ plausible: 'spy' });
+  fillRequired(ctx);
+  answer(ctx, 'title', 'Service request routing');
+  sendToGitHub(ctx);
+
+  assert.equal(ctx.opened.length, 1);
+  // The event name alone: no props, so no answer ever leaves for the analytics host.
+  assert.deepEqual(ctx.events, [['Send to GitHub']]);
+});
+
+test('the event lands in the queue head.html stubs before Plausible has loaded', async () => {
+  const ctx = await boot({ plausible: 'stub' });
+  fillRequired(ctx);
+  sendToGitHub(ctx);
+
+  assert.equal(ctx.opened.length, 1);
+  assert.deepEqual(
+    Array.from(ctx.window.plausible.q, (args) => Array.from(args)),
+    [['Send to GitHub']]
+  );
+});
+
+test('no event while validation still blocks the hand-off', async () => {
+  const ctx = await boot({ plausible: 'spy' });
+  submitForm(ctx);
+
+  assert.equal(ctx.form.querySelector('[data-error-summary]').hidden, false);
+  assert.equal(ctx.opened.length, 0);
+  assert.deepEqual(ctx.events, []);
+});
+
+test('no event when a pop-up blocker stops the tab', async () => {
+  const ctx = await boot({ plausible: 'spy', popupBlocked: true });
+  fillRequired(ctx);
+  sendToGitHub(ctx);
+
+  assert.equal(ctx.form.querySelector('[data-fallback-link]').hidden, false);
+  assert.deepEqual(ctx.events, []);
+});
+
+test('with analytics off the hand-off is unchanged', async () => {
+  const ctx = await boot();
+  assert.equal(typeof ctx.window.plausible, 'undefined', 'precondition: no analytics on the page');
+  fillRequired(ctx);
+  sendToGitHub(ctx);
+
+  assert.equal(ctx.opened.length, 1);
+  assert.match(ctx.form.querySelector('[data-review]').textContent, /Almost there/);
+});
+
+test('an analytics call that throws does not stop the hand-off', async () => {
+  const ctx = await boot({ plausible: 'throws' });
+  fillRequired(ctx);
+  sendToGitHub(ctx);
+
+  assert.equal(ctx.opened.length, 1);
+  assert.match(ctx.form.querySelector('[data-review]').textContent, /Almost there/);
   assert.equal(ctx.form.querySelector('[data-fallback-link]').hidden, true);
 });
 

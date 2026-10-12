@@ -81,6 +81,10 @@
   </script>
   {% if hd_cfg.analytics.plausible_domain and hd_cfg.analytics.plausible_domain != '' %}
   <script defer data-domain="{{ hd_cfg.analytics.plausible_domain }}" src="https://plausible.io/js/script.js"></script>
+  {%- comment -%} Plausible's queue stub, so a custom event sent before the deferred script
+  has loaded (or when a blocker stops it) is queued instead of thrown. The submit page's
+  `Send to GitHub` event goes through it (assets/js/submit.js). {%- endcomment %}
+  <script>window.plausible = window.plausible || function () { (window.plausible.q = window.plausible.q || []).push(arguments); };</script>
   {% endif %}
   {%- comment -%} The social preview image (site.social.og_image) is injected into
   page.image by _plugins/social_image.rb so jekyll-seo-tag emits the og:image /

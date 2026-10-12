@@ -1,0 +1,48 @@
+# Maintainer-only form: the "no terminal" half of the setup wizard. The three
+# pasted files become a pull request via .github/workflows/apply-setup.yml.
+# Hand-written (unlike new-entry.yml) — the section labels below are the
+# contract with scripts/apply_setup_from_issue.mjs, which pins them in a test.
+# `npm run generate` copies it into .github/ISSUE_TEMPLATE/ only while setup is
+# in progress (github.setup_forms in _data/site.yml, or demo when that is unset).
+name: Apply setup (creates PR)
+description: Turn the files from the /setup/ wizard into a pull request. Maintainers only.
+title: "[Setup] Apply configuration"
+labels:
+  - "content:site-config"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Open **/setup/** on the site, answer the questions, then copy each file from
+        the review step into the matching box below.
+
+        You only paste three. `_data/navigation.yml`, `_config.yml`, the submission
+        form and the issue chooser are rebuilt from these, so they cannot end up out of step.
+
+        Everything arrives as a pull request — nothing on the site changes until you
+        merge it. Issues opened by anyone who is not a maintainer are ignored.
+  - type: textarea
+    id: site
+    attributes:
+      label: _data/site.yml
+      description: Branding, contact details, modules and home-page copy.
+      render: yaml
+  - type: textarea
+    id: theme
+    attributes:
+      label: _data/theme.yml
+      description: Colors, fonts and corner radius. Leave this empty to keep the current theme.
+      render: yaml
+  - type: textarea
+    id: schema
+    attributes:
+      label: _data/schema.yml
+      description: The entry content model — every field on the submission form and the entry page.
+      render: yaml
+  - type: checkboxes
+    id: options
+    attributes:
+      label: While you are here
+      options:
+        - label: Remove the demo content — the sample entries, events, cohort and resources — turn the demo banner off, and switch the governance page off until you have rewritten _data/governance.yml
+          required: false

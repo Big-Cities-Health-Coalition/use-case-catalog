@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible PHCT defect without sensitive information.
+description: Report something on this site or in its automation that does not work as it should.
 title: "[Bug] "
 labels: [bug]
 body:
@@ -7,11 +7,11 @@ body:
     attributes:
       value: Do not include credentials, personal information, PHI, or private security details. Use SECURITY.md for vulnerabilities.
   - type: input
-    id: version
+    id: location
     attributes:
-      label: PHCT release and commit
-      description: Copy the tag and full commit from the release or .phct-version.json.
-      placeholder: v1.9.0 / 40-character SHA
+      label: Where it happens
+      description: The page address, the link to a workflow run, or the repository file.
+      placeholder: https://example.org/catalog/ or an Actions run URL
     validations:
       required: true
   - type: dropdown
@@ -23,7 +23,7 @@ body:
         - Submission or review workflow
         - Setup or configuration
         - Build or deployment
-        - Parent update
+        - Template update
         - Documentation
         - Other
     validations:
@@ -44,7 +44,7 @@ body:
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior and recovery message
+      label: Actual behavior and any error message
     validations:
       required: true
   - type: input
@@ -52,6 +52,12 @@ body:
     attributes:
       label: Browser, device, or runner
       placeholder: Safari 19 / iPhone; or ubuntu-latest Actions run URL
+  - type: input
+    id: version
+    attributes:
+      label: Template release (maintainers)
+      description: Optional. The release and commit recorded in .phct-version.json, if you know them.
+      placeholder: v1.9.0 / 40-character SHA
   - type: checkboxes
     id: safety
     attributes:
