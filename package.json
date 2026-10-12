@@ -1,6 +1,6 @@
 {
   "name": "phct",
-  "version": "1.11.0-rc.7",
+  "version": "1.11.0-rc.8",
   "private": true,
   "packageManager": "npm@10.9.4",
   "engines": {
