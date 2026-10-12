@@ -25,7 +25,10 @@ content, or images.
 1. Confirm the submitter and links are appropriate for publication.
 2. Check the generated review criteria, closer-review labels, plain language, alt text, licensing,
    and absence of PII/PHI, credentials, or non-public data.
-3. Require **Validate Content** and **Quality** on the latest commit.
+3. Require **Content: entries and site build** (in **Validate Content**) on the latest commit. A
+   pull request that changes only entry files skips every code check, which GitHub counts as
+   passed; one that touches any other file runs them all. See
+   [which checks a submission runs](admin-guide.md#which-checks-a-submission-runs).
 4. Preview changed pages; approve and merge only when another reviewer could understand the diff.
 5. Confirm **Build & Deploy** succeeds and the published entry/search/feed work.
 

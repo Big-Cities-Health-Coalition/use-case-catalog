@@ -47,13 +47,15 @@ export const ROOT = process.env.BUILD_VARIANTS_ROOT
  * replaces them with ones generated from the variant's own schema, and `none`
  * empties the catalog so the empty state renders.
  *
- * `demoMessage` writes `demo_message` into the copy's site.yml. `newestEntry`
+ * `demoMessage` writes `demo_message` into the copy's site.yml, and
+ * `submitFallbackEmail` writes `submit.fallback_email` (`false` is the off
+ * switch, `''` falls through to `organization.contact_email`). `newestEntry`
  * edits the entry that sorts first (newest `published`): `stripMedia` drops its
  * pictures, so the catalog's first card has none, and `attachDeck` commits a
  * one-page PDF to its thumbnail `file` field with no thumb.jpg beside it.
  *
  * @type {{id: string, preset: string|null, modules: object|null, demo?: boolean, themeFonts?: object,
- *         githubBranch?: string, demoMessage?: string,
+ *         githubBranch?: string, demoMessage?: string, submitFallbackEmail?: string|false,
  *         newestEntry?: {stripMedia?: boolean, attachDeck?: boolean},
  *         legacyIssueChooser?: boolean,
  *         entries: 'keep'|'fixtures'|'none', build: boolean,
@@ -82,12 +84,18 @@ export const VARIANTS = [
   {
     id: 'legacy-font-names',
     preset: null,
-    modules: null,
+    // `status: null` deletes the key: a site.yml written before the status
+    // module existed, which must still build /status/ and link to it.
+    modules: { status: null },
     themeFonts: { heading: 'Source Serif 4', body: 'Source Sans 3' },
+    submitFallbackEmail: '',
     entries: 'none',
     build: true,
     expectFrontMatter: 'pass',
-    why: 'a protected pre-rename theme file must load the current derivative font binaries',
+    why:
+      'a protected pre-rename theme file must load the current derivative font binaries; ' +
+      'its site.yml also predates the status module, which must build anyway, ' +
+      'and leaves submit.fallback_email blank, so /submit/ falls back to the contact email',
   },
   {
     id: 'legacy-issue-chooser',
@@ -107,12 +115,14 @@ export const VARIANTS = [
     demoMessage:
       'Entries here are provisional until the [review panel](https://example.org/review-panel) signs them off.',
     newestEntry: { stripMedia: true, attachDeck: true },
+    submitFallbackEmail: 'submissions@example.org',
     entries: 'keep',
     build: true,
     expectFrontMatter: 'pass',
     why:
       'events, cohorts and resources are off in the shipped config, so their layouts never render in CI; ' +
-      'it also carries a custom demo banner, a newest entry with no picture and an attached deck',
+      'it also carries a custom demo banner, a newest entry with no picture, an attached deck ' +
+      'and its own submit.fallback_email, so the email route is tested whatever the shipped site.yml says',
   },
   ...['ai-use-cases', 'cohort-portal', 'resource-library', 'blank'].map((preset) => ({
     id: preset,
@@ -135,11 +145,15 @@ export const VARIANTS = [
   {
     id: 'shipped-empty',
     preset: null,
-    modules: null,
+    modules: { status: false },
+    submitFallbackEmail: false,
     entries: 'none',
     build: true,
     expectFrontMatter: 'pass',
-    why: 'the shipped configuration with nothing published yet: the governance page carries figures but no feed to link to',
+    why:
+      'the shipped configuration with nothing published yet: the governance page carries figures but no feed to link to; ' +
+      'the status module is off, so /status/ must not be built or linked; ' +
+      'submit.fallback_email is false while organization.contact_email stays set, so /submit/ offers no email route',
   },
   {
     // The wizard's sample-removal step is documented as the thing that keeps a
@@ -164,13 +178,23 @@ function timedRun(command, args, options) {
   return { ...result, duration_ms: Math.round(performance.now() - started) };
 }
 
-/** Turn on/off modules in a scratch `_data/site.yml`. Comments are not preserved. */
-function patchSite(file, { modules, demo, githubBranch, demoMessage }) {
+/**
+ * Turn on/off modules in a scratch `_data/site.yml`; a `null` module value deletes
+ * the key, as in a site.yml written before that module existed. Comments are not
+ * preserved.
+ */
+function patchSite(file, { modules, demo, githubBranch, demoMessage, submitFallbackEmail }) {
   const site = readYaml(file);
-  if (modules) site.modules = { ...(site.modules ?? {}), ...modules };
+  if (modules) {
+    site.modules = { ...(site.modules ?? {}), ...modules };
+    for (const [key, value] of Object.entries(modules)) if (value === null) delete site.modules[key];
+  }
   if (typeof demo === 'boolean') site.demo = demo;
   if (githubBranch) site.github = { ...(site.github ?? {}), branch: githubBranch };
   if (demoMessage) site.demo_message = demoMessage;
+  if (submitFallbackEmail !== undefined) {
+    site.submit = { ...(site.submit ?? {}), fallback_email: submitFallbackEmail };
+  }
   writeYaml(file, site);
 }
 
@@ -274,7 +298,13 @@ export function buildVariant(variant, { scratchRoot, log = () => {} }) {
     if (!ok) return { variant, dir, siteDir: null, steps, ok: false };
   }
 
-  if (variant.modules || typeof variant.demo === 'boolean' || variant.githubBranch || variant.demoMessage) {
+  if (
+    variant.modules ||
+    typeof variant.demo === 'boolean' ||
+    variant.githubBranch ||
+    variant.demoMessage ||
+    variant.submitFallbackEmail !== undefined
+  ) {
     patchSite(path.join(dir, '_data', 'site.yml'), variant);
   }
   if (variant.newestEntry) patchNewestEntry(dir, variant.newestEntry);

@@ -35,6 +35,7 @@ import {
   NO_RESPONSE,
   codeSpan,
   coerce,
+  coerceChoice,
   parseAttachmentRef,
   parseImageRefs,
   parseIssueForm,
@@ -203,11 +204,12 @@ for (const field of fields.filter((f) => f.type === 'images')) {
 // A `file`/`image` question is an `upload` control on the issue form, so the
 // deck or the photo is already on GitHub by the time this runs: fetch it into
 // the entry folder and the pull request carries the file, not a promise that a
-// maintainer will add it. Nothing attached keeps the previous behaviour — the
-// front matter still names the path the schema expects. A `file` answer that
-// links somewhere other than GitHub's upload store (a file over the 25 MB cap,
-// or one kept in a shared workspace) is stored as that link and not fetched;
-// the entry page renders it as an external row.
+// maintainer will add it. Nothing attached leaves the field blank: naming the
+// path the schema expects would point the entry at a file that was never
+// written (a maintainer who adds one by hand sets the path too). A `file`
+// answer that links somewhere other than GitHub's upload store (a file over the
+// 25 MB cap, or one kept in a shared workspace) is stored as that link and not
+// fetched; the entry page renders it as an external row.
 
 /** @type {Record<string, string>} */
 const attachmentValues = {};
@@ -219,10 +221,10 @@ for (const field of fields.filter((f) => f.type === 'file' || f.type === 'image'
   const publicPath = `/${entryPath}/${slug}/${filename}`;
   const ref = parseAttachmentRef(rawValue(sections, field));
 
-  // No attachment: a `file` keeps naming the path a maintainer uploads into
-  // (docs/admin-guide.md), an `image` has nothing to point at.
+  // No attachment (`_No response_`, a blank answer, text with no link in it):
+  // nothing will be written to `publicPath`, so there is nothing to point at.
   if (!ref) {
-    attachmentValues[field.key] = field.type === 'file' ? publicPath : '';
+    attachmentValues[field.key] = '';
     continue;
   }
   if (!shouldDownload(field.type, ref.url)) {
@@ -293,6 +295,10 @@ const entries = [
 
 let bodyText = '';
 
+/** Choice answers that named no option: kept out of the front matter (a value
+ * outside `options` fails `npm run validate`) and listed for the reviewer. */
+const unmatchedAnswers = [];
+
 for (const field of fields) {
   const key = String(field.key ?? '');
   if (!key) continue;
@@ -310,6 +316,15 @@ for (const field of fields) {
   }
   if (field.type === 'file' || field.type === 'image') {
     entries.push([key, attachmentValues[key] ?? '']);
+    continue;
+  }
+  // Select, multiselect and boolean questions are text inputs on the issue form
+  // (GitHub prefills nothing else from /submit/), so the answer is typed text,
+  // matched onto the schema's options here.
+  if (field.type === 'select' || field.type === 'multiselect' || field.type === 'boolean') {
+    const { value, unmatched } = coerceChoice(field, raw);
+    if (unmatched.length > 0) unmatchedAnswers.push({ key, label: field.label || key, values: unmatched });
+    entries.push([key, value]);
     continue;
   }
   entries.push([key, coerce(field, raw)]);
@@ -355,6 +370,7 @@ const checklist = reviewChecklist({
   criteria: publishedCriteria(),
   status: { key: statusKey, start: statusStart, approved: schema.entry?.status_approved_value },
   escalations: flagged,
+  unmatched: unmatchedAnswers,
   entryDir: `${entryPath}/${slug}`,
 });
 
@@ -433,6 +449,16 @@ if (savedAttachments.length > 0) {
 }
 if (flagged.length > 0) {
   summaryLines.push('', '### Closer review', ...flagged.map((item) => `- ${item.reason}`));
+}
+if (unmatchedAnswers.length > 0) {
+  summaryLines.push(
+    '',
+    '### Answers to fix',
+    ...unmatchedAnswers.map(
+      (item) =>
+        `- **${item.label}** (\`${item.key}\`): ${item.values.map((value) => codeSpan(value.replace(/\s+/g, ' '))).join(', ')}`
+    )
+  );
 }
 summaryLines.push(
   '',

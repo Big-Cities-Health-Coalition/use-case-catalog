@@ -129,6 +129,14 @@ config file or a dashboard setting, and whether it filters by label or by title 
 and configure the same exemption. Leave the bots on for everything else: template
 update PRs and hand-written code changes are exactly what they are good at.
 
+## If you were asked to apply an edit request
+
+This section is not part of the setup runbook. Once the site is live, readers ask for
+changes through the **Suggest an edit** link on each entry page, which opens an issue
+labelled `content:edit-request`. If a maintainer assigned you one, follow
+[`docs/edit-requests.md`](docs/edit-requests.md) exactly: change only what the issue
+asks, open a pull request that says `Closes #N`, and leave the merge to a person.
+
 ## Verifying your work
 
 - `npm run validate` — YAML parse + front-matter + file-size gate; the minimum bar.
@@ -146,5 +154,6 @@ update PRs and hand-written code changes are exactly what they are good at.
 | Every `_data/*.yml` key | `docs/configuration.md` |
 | Schema fields, facets, card/search semantics | `docs/content-model.md` |
 | Running the catalog day to day (issues → PRs) | `docs/admin-guide.md` |
+| Applying a reader's edit request to an entry | `docs/edit-requests.md` |
 | Taking template updates later | `docs/upgrading.md` |
 | How the repo family fits together | `docs/ecosystem.md` |

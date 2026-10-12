@@ -212,7 +212,7 @@
 
       <div class="mt-6 space-y-7"><div class="field" id="f-title-field" data-field="title" data-type="text" data-required="true" data-label="Title" data-question="What is it called?" data-error="" data-slot="" data-weight="1" data-prefill="true" data-role="title"><label class="field-label" for="f-title">What is it called?</label>
             <p class="field-help" id="f-title-help">Specific enough that someone scanning a list of names knows what it is.</p>
-            <input class="field-input" type="text" id="f-title" name="title" aria-describedby="f-title-help f-title-error" required="" placeholder="Automated 311 call triage with LLM classification" /><p class="field-error" id="f-title-error" hidden=""><svg class="shrink-0 h-4 w-4 " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+            <input class="field-input" type="text" id="f-title" name="entry_title" aria-describedby="f-title-help f-title-error" required="" placeholder="Automated 311 call triage with LLM classification" /><p class="field-error" id="f-title-error" hidden=""><svg class="shrink-0 h-4 w-4 " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
 <span data-error-text=""></span></p>
         </div><div class="field" id="f-solution_type-field" data-field="solution_type" data-type="select" data-required="true" data-label="What is being shared" data-question="What are you sharing?" data-error="" data-slot="badge" data-weight="3" data-prefill="true" data-role=""><fieldset>
               <legend class="field-label" id="f-solution_type-legend">What are you sharing?</legend>
@@ -755,7 +755,7 @@
 
       <div class="mt-6 space-y-7"><div class="field" id="f-body-field" data-field="body" data-type="markdown" data-required="true" data-label="Full write-up" data-question="What&#39;s the story?" data-error="" data-slot="" data-weight="1" data-prefill="true" data-role=""><label class="field-label" for="f-body">What's the story?</label>
             <p class="field-help" id="f-body-help">Markdown is supported. Suggested headings: Problem, Approach, Time and resources (data, staffing, cost), Results, Lessons learned, How to reuse.</p>
-            <textarea class="field-input min-h-[18rem] font-mono text-sm" id="f-body" name="body" rows="16" aria-describedby="f-body-help f-body-error" required="">## Problem
+            <textarea class="field-input min-h-[18rem] font-mono text-sm" id="f-body" name="entry_body" rows="16" aria-describedby="f-body-help f-body-error" required="">## Problem
 
 ## Approach
 
@@ -815,11 +815,16 @@
       <li>1. Sending opens a GitHub issue with your answers already filled in. Nothing is submitted until you press <em>Submit new issue</em> there.</li>
       <li>2. Automation turns the issue into a draft page and opens a pull request.</li>
       <li>3. Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share.</li>
+      <li>4. GitHub gives your submission a number, like #42. Keep it: GitHub emails you each time something changes, and you can <a class="font-medium text-brand-primary underline underline-offset-2 hover:no-underline" href="/status/">check where it stands</a> with that number at any time.</li>
     </ol>
     <p class="mt-3 flex items-start gap-1.5 rounded-md bg-brand-accent/10 p-2 text-sm text-brand-ink">
       <svg class="shrink-0 h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
 <span>Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content.</span>
     </p>
+  </template>
+  <template data-after-submit="">
+    <p class="font-semibold text-brand-ink">After you submit</p>
+    <p class="mt-1 text-sm text-brand-muted">GitHub gives your submission a number, like #42. Keep it: GitHub emails you each time something changes, and you can <a class="font-medium text-brand-primary underline underline-offset-2 hover:no-underline" href="/status/">check where it stands</a> with that number at any time.</p>
   </template><template data-option-view="solution_type__0"><span class="badge" data-tone="neutral"><svg class="shrink-0 h-3 w-3 " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" /></svg>
 <span>Source code</span></span></template><template data-option-view="solution_type__1"><span class="badge" data-tone="neutral"><svg class="shrink-0 h-3 w-3 " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" /></svg>
 <span>Cloud deployment</span></span></template><template data-option-view="solution_type__2"><span class="badge" data-tone="neutral"><svg class="shrink-0 h-3 w-3 " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" /></svg>

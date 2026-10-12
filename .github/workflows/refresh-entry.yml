@@ -23,6 +23,9 @@ name: Refresh an entry from issue
 #
 # Set the repository variable SUBMISSIONS_OPEN to `false` to accept these only
 # from members and collaborators; leaving it unset keeps them open.
+#
+# Replies to the submitter come from scripts/lib/notify.mjs and keep one
+# `status:*` label on the issue (see new-entry.yml).
 
 on:
   issues:
@@ -78,6 +81,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
 
+      - name: Mark the submission received
+        if: github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
+
       - name: Read the refresh answer
         id: refresh
         continue-on-error: true
@@ -93,19 +105,10 @@ jobs:
           REFRESH_ERROR: ${{ steps.refresh.outputs.error }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const detail = process.env.REFRESH_ERROR || 'The refresh step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'This refresh could not be applied yet.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix the problem and the automation will try again. If the message above does not tell you what to change, comment here and a maintainer will help.'
-              ].join('\n')
-            });
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason: detail } });
             core.setFailed(detail);
 
       # Five different situations end here — an empty issue, an unanswered
@@ -118,21 +121,10 @@ jobs:
           NO_CHANGE_REASON: ${{ steps.refresh.outputs.reason }}
         with:
           script: |
-            const reason = process.env.NO_CHANGE_REASON;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'No entry was changed, so there is no pull request to review.',
-                '',
-                reason
-                  ? '> ' + reason.split('\n').join('\n> ')
-                  : '> The entry could not be found, or it had already been confirmed.',
-                '',
-                'Edit this issue if you want the automation to try again.'
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            const reason = process.env.NO_CHANGE_REASON || 'The entry could not be found, or it had already been confirmed.';
+            await notify.notifyIssue({ github, context, core, kind: 'no_change', vars: { reason } });
 
       # "Something changed" never opens a pull request: nobody can turn prose
       # into a diff mechanically, and a generated diff nobody wrote is worse
@@ -148,6 +140,8 @@ jobs:
           ENTRY_VERIFIED_KEY: ${{ steps.refresh.outputs.verified_key }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const { owner, repo } = context.repo;
             const slug = process.env.ENTRY_SLUG;
             const file = process.env.ENTRY_FILE;
@@ -155,20 +149,12 @@ jobs:
             const verifiedKey = process.env.ENTRY_VERIFIED_KEY || 'verified';
             const branch = context.payload.repository?.default_branch || 'main';
 
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                `Thanks — this is now in the maintainers' queue for **\`${slug}\`**. Nothing on the site has changed yet.`,
-                '',
-                '**What was reported:**',
-                '',
-                '> ' + changes.split('\n').join('\n> '),
-                '',
-                `Maintainers: the entry is [\`${file}\`](https://github.com/${owner}/${repo}/edit/${branch}/${file}). Apply what applies, set \`${verifiedKey}:\` to the day you checked, and close this issue with the pull request.`
-              ].join('\n')
-            });
+            const details = [
+              `It is about **\`${slug}\`**. What was reported:`,
+              '> ' + changes.split('\n').join('\n> '),
+              `Maintainers: the entry is [\`${file}\`](https://github.com/${owner}/${repo}/edit/${branch}/${file}). Apply what applies, set \`${verifiedKey}:\` to the day you checked, and close this issue with the pull request.`
+            ].join('\n\n');
+            await notify.notifyIssue({ github, context, core, kind: 'handed_over', status: notify.STATUS.inReview, vars: { details } });
 
             // Best effort: a fork that never ran Bootstrap labels must still get
             // the comment above, which is the part that carries the information.
@@ -183,18 +169,42 @@ jobs:
               core.warning(`Could not add the review:refresh-changes label (${error.status}). Run Bootstrap labels once from the Actions tab.`);
             }
 
+      # The branch is refresh/<entry slug>-<issue>, and the entry is an answer
+      # the submitter can edit, so an edit can propose a new name. One issue
+      # keeps one draft: an open draft for this issue keeps its branch, both
+      # for the rebuild below and for closing a stale confirmation. See
+      # scripts/lib/drafts.mjs.
+      - name: Find the draft already open for this issue
+        id: draft
+        if: steps.refresh.outcome == 'success' && (steps.refresh.outputs.outcome == 'changes' || steps.refresh.outputs.outcome == 'confirmed')
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PROPOSED: ${{ steps.refresh.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const drafts = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/drafts.mjs`).href);
+            const { branch } = await drafts.findDraftBranch({
+              github, context, core,
+              proposed: process.env.PROPOSED,
+              label: 'content:refresh',
+              prefix: 'refresh/',
+              numbered: true
+            });
+            core.setOutput('branch', branch);
+
       # A submitter can answer "yes" — opening the confirmation pull request
       # below — then edit this same issue to answer "no" instead. Without
       # this, that pull request stays open and mergeable, and merging it
       # would stamp `verified:` after the submitter retracted the answer.
-      # `BRANCH` here is the same name a "yes" answer on this issue would
-      # have used (scripts/refresh_entry_from_issue.mjs), so it finds exactly
-      # that pull request and nothing another issue opened.
+      # `BRANCH` here is this issue's open draft when it has one, otherwise
+      # the name a "yes" answer would have used (scripts/refresh_entry_from_issue.mjs),
+      # so it finds exactly that pull request and nothing another issue opened.
       - name: Close a stale confirmation pull request
         if: steps.refresh.outcome == 'success' && steps.refresh.outputs.outcome == 'changes'
         env:
           GH_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ steps.refresh.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
         run: |
           set -euo pipefail
           # `--state open` matters: a closed or merged pull request must never
@@ -205,11 +215,33 @@ jobs:
               --comment "The submitter's answer on this issue changed to \"something changed\"; closing this stale confirmation."
           fi
 
-      - name: Commit the confirmation on a new branch
-        id: commit
+      # An edit to the issue re-runs this job, which rebuilds the branch and
+      # force-pushes it. Once a reviewer has committed to it that would erase
+      # their work, so it is only rebuilt while every commit on it is the
+      # automation's. See scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
         if: steps.refresh.outputs.outcome == 'confirmed'
         env:
-          BRANCH: ${{ steps.refresh.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
+        run: node scripts/branch_guard.mjs
+
+      - name: Hand the edit to the reviewer
+        if: steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.draft.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH });
+
+      - name: Commit the confirmation on a new branch
+        id: commit
+        if: steps.refresh.outputs.outcome == 'confirmed' && steps.guard.outputs.held != 'true'
+        env:
+          BRANCH: ${{ steps.draft.outputs.branch }}
           ENTRY_FILE: ${{ steps.refresh.outputs.file }}
           SLUG: ${{ steps.refresh.outputs.slug }}
         run: |
@@ -236,7 +268,7 @@ jobs:
         if: steps.commit.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ steps.refresh.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
           SLUG: ${{ steps.refresh.outputs.slug }}
           ENTRY_FILE: ${{ steps.refresh.outputs.file }}
           VERIFIED_DATE: ${{ steps.refresh.outputs.date }}
@@ -290,7 +322,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BOT_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN }}
-          BRANCH: ${{ steps.refresh.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
         run: |
           set -euo pipefail
           if [ -n "$BOT_TOKEN" ]; then
@@ -316,17 +348,15 @@ jobs:
           VERIFIED_DATE: ${{ steps.refresh.outputs.date }}
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                `Thank you — that is the whole job. The confirmation is a pull request waiting for a maintainer:`,
-                '',
-                process.env.PR_URL,
-                '',
-                `It sets the entry's confirmed date to ${process.env.VERIFIED_DATE}. Once it merges, the page stops telling readers the entry may be out of date and you will not be asked again for another year.`
-              ].join('\n')
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({
+              github, context, core,
+              kind: 'draft_ready',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: { details: `It sets the entry's confirmed date to ${process.env.VERIFIED_DATE}. Once it merges, the page stops telling readers the entry may be out of date and you will not be asked again for another year.` }
             });
 
       # An `issues: edited` re-run updates the pull request that already exists.
@@ -339,17 +369,15 @@ jobs:
           PR_URL: ${{ steps.pr.outputs.url }}
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'Updated the pull request from your edit:',
-                '',
-                process.env.PR_URL,
-                '',
-                'It now matches this issue. A maintainer reviews it, and the entry\'s date does not change until it is merged.'
-              ].join('\n')
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({
+              github, context, core,
+              kind: 'draft_updated',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: { details: "The entry's date does not change until it is merged." }
             });
 
       # Everything above can still leave the issue silent: the push or the pull
@@ -361,19 +389,9 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'Your answer was read, but the pull request could not be opened, so nothing has been lost and the entry is unchanged.',
-                '',
-                'The usual cause is one repository setting: a maintainer should open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });
 
   # With SUBMISSIONS_OPEN set to `false` the job above simply does not run for
   # an outside contributor — and a refresh reminder invites exactly those
@@ -386,19 +404,31 @@ jobs:
       && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
     steps:
+      # The default branch, for the message module and the site's wording.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
       - name: Say a maintainer will handle it by hand
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'Thanks for confirming. Automatic updates are currently paused, so this has not become a pull request — a maintainer will apply it by hand.',
-                '',
-                'Nothing more is needed from you. Everything you wrote is saved on this issue.'
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'paused', status: notify.STATUS.received, once: true });

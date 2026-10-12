@@ -182,16 +182,22 @@ Each item under `fields` is a hash:
 | `markdown` | — | Becomes the page **body**, not a front-matter key. Only one field may be `markdown`. |
 | `url` | string | Must start with `http://` or `https://`. Rendered as a link with a host label. |
 | `email` | string | Must contain `@`. Rendered as a `mailto:` link. |
-| `select` | string | One value from `options`. |
-| `multiselect` | list of strings | Any number of values from `options`. Rendered as a multi-select dropdown on GitHub, so the answers survive the hand-off from `/submit/` and `required` is enforceable; GitHub's dropdown carries only the option labels, so the per-option `option_meta.description` shows on this site's own form and catalog but not there. |
+| `select` | string | One value from `options`. Asked on the GitHub issue form as a single-line text input whose help lists the options — see [choice questions on the issue form](#choice-questions-on-the-issue-form). |
+| `multiselect` | list of strings | Any number of values from `options`. Asked on the GitHub issue form as a single-line text input taking the options separated by commas, as `/submit/` sends them; an option may itself contain a comma. The per-option `option_meta.description` shows on this site's own form and catalog, not on GitHub. |
 | `list` | list of strings | Free-form: one per line in the issue form, comma-separated in the web form. With [`links_entries: true`](#field-spec) the strings are entry slugs and render as links to those entries. |
 | `date` | `YYYY-MM-DD` | Rendered as "March 9, 2026". |
 | `number` | number | No range validation. |
-| `boolean` | `true`/`false` | Rendered as Yes/No. |
-| `file` | string (path) | One attachment, uploaded on the form; front matter stores `/<entry.path>/<slug>/<filename>`. |
+| `boolean` | `true`/`false` | Rendered as Yes/No. A checkbox on `/submit/`; on the GitHub issue form a text input that takes **Yes** (blank or **No** is `false`). |
+| `file` | string (path) | One attachment, uploaded on the form; front matter stores `/<entry.path>/<slug>/<filename>`, or stays blank when nothing was uploaded. |
 | `image` | string (path or URL) | One image, uploaded on the form. When the key is `thumbnail`, it is the card image. |
 | `images` | list — see below | A gallery. |
 | `links` | list of `{label, url}` — see below | Labelled links. |
+
+#### Choice questions on the issue form
+
+GitHub prefills an issue form's text fields (`input`, `textarea`) from the query string and nothing else. A `dropdown` opens empty whatever the link carries, which is why `select`, `multiselect` and `boolean` questions are single-line **text inputs** in the generated `new-entry.yml`, not dropdowns: `/submit/` sends the exact option text (a multiselect's options joined by `, `, a ticked boolean as `Yes`), and the answer arrives intact. Someone filling in the GitHub form directly reads the allowed answers in the field's help, or in a note just above it when the list is longer than GitHub's 200-character description limit.
+
+The scaffolder matches the text back onto `options` leniently: case, extra spaces, backticks, quotes and a closing full stop are ignored, and the schema's own spelling is what gets written. A multiselect is split on commas (or semicolons, or one per line), and an option that contains a comma is still recognised as one option. An answer that matches no option is **not** written to the front matter (it would fail `npm run validate`). The pull request lists it under **Answers to fix** for the maintainer to correct. Issues filed with the older dropdown form, including its `None` for an unanswered question, still scaffold the same way.
 
 #### Attachments (`file` and `image`)
 
@@ -199,7 +205,7 @@ A `file` or `image` field is a GitHub **`upload`** control on the issue form, so
 
 - `validations.accept` comes from the schema — the extension of `filename` for a `file` (shipped: `deck.pdf` → `.pdf`), and `.png,.jpg,.jpeg,.gif,.webp` for an `image`.
 - The scaffolder downloads the attachment into the entry folder under exactly that `filename`, through the same guards as screenshots: public hosts only (every redirect re-checked), a 25 MB streaming cap, and a magic-byte check — a `.pdf` that does not start with `%PDF` is refused and reported on the pull request instead of being committed.
-- Nothing attached is not an error. A `file` field still records the path the schema expects, so a maintainer can drop the file into the folder later exactly as before.
+- Nothing attached is not an error. A skipped upload leaves the field blank, the same as any other unanswered question, so the front matter never names a file that was not written. To add the file by hand, commit it to the entry folder and set the field to its path in the same PR (see [admin-guide.md](admin-guide.md#other-attachments-and-thumbnails)).
 - **A `file` field may hold an `http(s)` URL instead of a path**, for a file over GitHub's 25 MB attachment limit or one kept in a shared workspace. A pasted link that is not a GitHub attachment is stored as the URL and not downloaded. When a GitHub attachment's download is refused, the URL is kept and the pull request says so. The page renders a URL value as an outbound row rather than a download, with the [`link_access`](configuration.md#link-access) host line when a rule applies. When a `links` field is on the form, the upload control's description points submitters at it for such links. For files too big for the repository, see [admin-guide.md](admin-guide.md#large-files).
 - **`validations.required` on an upload is enforced on public repositories only.** On a private fork a required attachment is a prompt, not a gate.
 - A gallery stays a `textarea`: `upload` holds one file and has nowhere to put per-image alt text, so `images` keeps the drag-into-the-box control that preserves `URL | alt text`.
@@ -370,7 +376,7 @@ The option lists are a **starting draft, not a standard.** The dollar bands are 
 
 ### The attestation and governance notes
 
-`no_pii_attestation` is a required `boolean`: the wizard shows it as a checkbox that must be ticked, the issue form as a Yes/No dropdown, and the page as **Yes/No**. It exists so a submitter has to say, in their own name, that nothing in the write-up, screenshots or example data is personal or protected — the coalition's baseline for anything published, and the one thing a reviewer will spot-check first. `data_governance_notes` is the free-text companion for the answers that need a sentence (which agreement covers the data, what was de-identified, who approved sharing).
+`no_pii_attestation` is a required `boolean`: the wizard shows it as a checkbox that must be ticked, the issue form as a text question answered **Yes**, and the page as **Yes/No**. It exists so a submitter has to say, in their own name, that nothing in the write-up, screenshots or example data is personal or protected — the coalition's baseline for anything published, and the one thing a reviewer will spot-check first. `data_governance_notes` is the free-text companion for the answers that need a sentence (which agreement covers the data, what was de-identified, who approved sharing).
 
 Three shipped fields carry `escalate_on`, matching the governance page's "partner review when warranted" tier: `no_pii_attestation` on `[false]`, `data_sensitivity` on the PII, PHI and CJIS options, and `audience` on *Public-facing*. A submission that trips any of them opens as a pull request with a **Closer review** block and the `review:data-governance` label — the reviewer sees at a glance that this one is not a five-minute intake.
 

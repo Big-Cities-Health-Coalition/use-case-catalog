@@ -52,21 +52,21 @@ settings:
   pull_requests_required: true
   required_approvals: 0
   extra_approval_required_for_unattributed_changes: true
-  required_checks:
-    - "Lint, test and build"
-    - "Build every preset and module combination"
-    - "Coverage evidence"
-    - "Analyze javascript-typescript"
-    - "Analyze ruby"
-    - "scale"
-    - "lint"
-  required_checks_strict_up_to_date: true
+  required_checks:   # since 2026-10-05: only the content check; template updates are gated by the PHCT updater, and nobody writes code here
+    - "Content: entries and site build"
+  required_checks_strict_up_to_date: false   # off since 2026-10-05: entries live in separate folders, and "Update branch" was the hardest step for a non-technical reviewer
   conversation_resolution_required: true
   force_push_blocked: true
   deletion_blocked: true
   tag_protection: false
   actions_allowed: selected
   default_workflow_permissions: read
+  disabled_workflows:   # since 2026-10-05: code checks with no code authored here; they queued behind every entry PR and starved the site build
+    - "CodeQL"
+    - "Lint workflows"
+    - "Performance and scale"
+    - "Quality (a11y + Lighthouse)"
+    - "Supply chain"
   actions_may_approve_pull_requests: true
   sha_pinning_enforced_by_repository_setting: true # re-verified 2026-09-24
   pages_source_github_actions: true

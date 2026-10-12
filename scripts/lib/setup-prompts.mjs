@@ -180,6 +180,7 @@ export const MODULE_HELP = {
   events: 'An events calendar rendered from _data/events.yml.',
   cohorts: 'Cohort / program-year pages with timelines and materials.',
   resources: 'A separate curated resource library from _data/resources.yml.',
+  status: 'A "Check your submission" page: submitters look up a submission by its GitHub number.',
 };
 
 export const RADIUS_CHOICES = [

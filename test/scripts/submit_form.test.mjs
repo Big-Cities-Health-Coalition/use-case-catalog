@@ -7,26 +7,22 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { JSDOM } from 'jsdom';
+import * as jsYaml from 'js-yaml';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HTML = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'submit-form.html'), 'utf8');
-const SCRIPTS = [
-  'assets/js/submit/fields.js',
-  'assets/js/submit/validate.js',
-  'assets/js/submit/repeatable.js',
-  'assets/js/submit/preview.js',
-  'assets/js/submit/draft.js',
-  'assets/js/submit/handoff.js',
-  'assets/js/submit/review.js',
-  'assets/js/submit/steps.js',
-  'assets/js/submit/shortform.js',
-  'assets/js/submit.js',
-];
+// The page's own script list, in order, from submit/index.md's front matter,
+// so a script added there (or reordered) is what these tests boot too.
+const SCRIPTS = jsYaml
+  .load(fs.readFileSync(path.join(ROOT, 'submit', 'index.md'), 'utf8').split(/^---$/m)[1])
+  .scripts.map((src) => src.replace(/^\//, ''));
 
 // Every booted page, closed when the file finishes. The draft's relative-time
 // clock is a live setInterval, and jsdom keeps the Node event loop alive for it
@@ -332,6 +328,8 @@ test('the review step reads the answers back before anything is sent', async () 
   });
   assert.match(panel.textContent, /Service request routing/);
   assert.match(panel.textContent, /What happens next/);
+  assert.match(panel.textContent, /4\. GitHub gives your submission a number/);
+  assert.ok(panel.querySelector('a[href="/status/"]'), '"what happens next" links to the status page');
   // Optional questions left blank are shown as such rather than dropped.
   assert.match(panel.textContent, /Not answered/);
 });
@@ -369,14 +367,167 @@ test('a complete form opens a prefilled issue URL', async () => {
   const url = new ctx.window.URL(ctx.opened[0]);
   assert.equal(url.hostname, 'github.com');
   assert.equal(url.searchParams.get('template'), 'new-entry.yml');
-  assert.match(url.searchParams.get('title'), /Service request routing$/);
+  assert.equal(url.searchParams.get('title'), ctx.form.dataset.titlePrefix + 'Service request routing');
   assert.equal(url.searchParams.get('title_key'), null);
   assert.equal(url.searchParams.get('contact_email'), 'someone@example.org');
-  // A multi-select is a dropdown now, and GitHub prefills those: the answer
-  // travels, comma-separated, the way the rendered form itself writes it.
+  // A multi-select travels comma-separated, into the text input the issue form
+  // asks it in (GitHub prefills text fields only, never a dropdown).
   const area = ctx.form.querySelector('[data-field="area"]');
   const chosen = Array.from(area.querySelectorAll('input:checked')).map((input) => input.value);
   assert.equal(url.searchParams.get('area'), chosen.join(', '));
+});
+
+// GitHub's new-issue page reads ?body= and ?title= as its own (the plain issue
+// body and the issue title), so a question with that id is never prefilled:
+// confirmed live, the write-up keyed `body` showed its default skeleton. The
+// generator and this page both rename such a key's id to `entry_<key>`, through
+// assets/js/configurator/issue-form-ids.js, and the no-script route names the
+// control the same way (the issue_form_id Liquid filter).
+//
+// The fixture is the template's own page, whatever schema this repository has,
+// so the issue form compared against is generated from the fixture's fields.
+async function fixtureIssueForm(ctx) {
+  const { issueTemplateFromSchema } = await import('../../assets/js/configurator/issue-template.js');
+  const fields = Array.from(ctx.form.querySelectorAll('[data-field]'), (wrap) => ({
+    key: wrap.dataset.field,
+    label: wrap.dataset.label,
+    type: wrap.dataset.type,
+    options: Array.from(wrap.querySelectorAll('input[value], option'), (node) => node.value).filter(Boolean),
+  }));
+  return jsYaml.load(issueTemplateFromSchema({ entry: { singular: 'Entry' }, fields }));
+}
+
+test('a field keyed like a GitHub parameter is prefilled under the id the issue form gives it', async () => {
+  const ctx = await boot();
+  const form = await fixtureIssueForm(ctx);
+  const idFor = (label) => form.body.find((item) => item.attributes?.label === label)?.id;
+  fillRequired(ctx);
+  answer(ctx, 'title', 'Service request routing');
+  answer(ctx, 'body', '## Problem\n\nCalls pile up.');
+  sendToGitHub(ctx);
+  const url = new ctx.window.URL(ctx.opened[0]);
+
+  for (const [key, answerText] of [
+    ['body', '## Problem\n\nCalls pile up.'],
+    ['title', 'Service request routing'],
+  ]) {
+    const wrap = ctx.form.querySelector(`[data-field="${key}"]`);
+    assert.ok(wrap, `the fixture has a "${key}" field`);
+    const id = idFor(wrap.dataset.label);
+    assert.ok(id, `the issue form has a question labelled "${wrap.dataset.label}"`);
+    assert.notEqual(id, key, `the issue form does not give "${key}" an id GitHub claims`);
+    assert.equal(url.searchParams.get(id), answerText, `the handoff sends the ${key} answer as ?${id}=`);
+    assert.equal(
+      wrap.querySelector('input, textarea').name,
+      id,
+      'the no-script route names the control the same'
+    );
+  }
+  assert.equal(url.searchParams.get('body'), null, 'no plain issue body that would replace the form');
+  assert.equal(url.searchParams.get('title'), ctx.form.dataset.titlePrefix + 'Service request routing');
+});
+
+test('every other field is prefilled under its own key, as before', async () => {
+  const ctx = await boot();
+  const ids = new Set((await fixtureIssueForm(ctx)).body.map((item) => item.id).filter(Boolean));
+  const keys = Array.from(ctx.form.querySelectorAll('[data-field]'), (wrap) => wrap.dataset.field);
+  const moved = keys.filter((key) => !ids.has(key));
+  assert.deepEqual(moved.sort(), ['body', 'title']);
+  for (const key of moved) assert.ok(ids.has('entry_' + key), `entry_${key} is in the issue form`);
+});
+
+// The whole hand-off, for every choice question: what the page sends, what
+// GitHub's form does with it, and what the scaffolder makes of the issue. GitHub
+// prefills an issue form's text fields (`input`, `textarea`) from the query
+// string and nothing else — a `dropdown` opened empty, losing the answer — so
+// the issue body is rendered here by that rule: a text control shows its
+// parameter, anything else arrives as `_No response_`.
+test('every choice answer survives page → prefilled issue → scaffolded front matter', async () => {
+  const ctx = await boot();
+  fillRequired(ctx);
+  answer(ctx, 'title', 'Service request routing');
+  const choices = Array.from(ctx.form.querySelectorAll('[data-field]')).filter((wrap) =>
+    ['select', 'multiselect', 'boolean'].includes(wrap.dataset.type)
+  );
+  assert.ok(
+    choices.some((wrap) => wrap.dataset.type === 'multiselect'),
+    'the fixture asks a multiselect'
+  );
+  for (const wrap of choices) {
+    if (wrap.dataset.type === 'multiselect') tick(ctx, wrap.dataset.field, 2);
+    else answer(ctx, wrap.dataset.field, wrap.dataset.type === 'boolean' ? 'true' : '');
+  }
+  sendToGitHub(ctx);
+  const url = new ctx.window.URL(ctx.opened[0]);
+  const form = await fixtureIssueForm(ctx);
+
+  const body = form.body
+    .filter((item) => item.type !== 'markdown')
+    .map((item) => {
+      const sent = url.searchParams.get(item.id);
+      const shown = (item.type === 'input' || item.type === 'textarea') && sent ? sent : '_No response_';
+      return '### ' + item.attributes.label + '\n\n' + shown;
+    })
+    .join('\n\n');
+
+  // The scaffolder, run on that body against the fixture's own fields. The
+  // throwaway checkout holds one file, removed file by file afterwards.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'submit-e2e-'));
+  const schemaPath = path.join(root, '_data', 'schema.yml');
+  try {
+    fs.mkdirSync(path.dirname(schemaPath));
+    const fields = Array.from(ctx.form.querySelectorAll('[data-field]'), (wrap) => ({
+      key: wrap.dataset.field,
+      label: wrap.dataset.label,
+      type: wrap.dataset.type,
+      required: wrap.dataset.required === 'true',
+      ...(wrap.dataset.type === 'select' || wrap.dataset.type === 'multiselect'
+        ? {
+            options: Array.from(wrap.querySelectorAll('input[value], option'), (node) => node.value).filter(
+              Boolean
+            ),
+          }
+        : {}),
+    }));
+    fs.writeFileSync(
+      schemaPath,
+      jsYaml.dump({ entry: { singular: 'Entry', path: 'catalog' }, fields }),
+      'utf8'
+    );
+    const run = spawnSync(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'new_entry_from_issue.mjs'), '--dry-run'],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          ISSUE_BODY: body,
+          ISSUE_TITLE: url.searchParams.get('title'),
+          ISSUE_NUMBER: '1',
+        },
+        encoding: 'utf8',
+      }
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stdout, /Answers to fix/);
+    const fm = jsYaml.load(run.stdout.match(/^---\n([\s\S]*?)\n---\n/m)[1]);
+
+    const readFields = ctx.window.SubmitForm.readFields(ctx.form);
+    for (const wrap of choices) {
+      const key = wrap.dataset.field;
+      const picked = ctx.window.SubmitForm.readValue(readFields.find((field) => field.key === key));
+      // A multiselect's array comes from the page's realm; copy it into this one
+      // so deepEqual compares values, not Array prototypes.
+      const expected =
+        wrap.dataset.type === 'boolean' ? picked === 'true' : Array.isArray(picked) ? [...picked] : picked;
+      assert.ok(wrap.dataset.type === 'boolean' ? expected : expected.length > 0, `${key} was answered`);
+      assert.deepEqual(fm[key], expected, `${key} (${wrap.dataset.type}) reached the front matter`);
+    }
+  } finally {
+    if (fs.existsSync(schemaPath)) fs.unlinkSync(schemaPath);
+    if (fs.existsSync(path.dirname(schemaPath))) fs.rmdirSync(path.dirname(schemaPath));
+    fs.rmdirSync(root);
+  }
 });
 
 test('the confirmation panel says the submission is not finished yet', async () => {
@@ -391,6 +542,14 @@ test('the confirmation panel says the submission is not finished yet', async () 
   assert.match(panel.textContent, /Submit new issue/);
   const reopen = panel.querySelector('a[target="_blank"]');
   assert.equal(reopen.href, ctx.opened[0], 'the prefilled link is kept, so the tab can be reopened');
+  // What to do once it is filed: keep the number, watch for GitHub's emails,
+  // and where to look it up (submit/index.md, template[data-after-submit]).
+  assert.match(panel.textContent, /After you submit/);
+  assert.match(panel.textContent, /GitHub gives your submission a number, like #42\. Keep it/);
+  assert.match(panel.textContent, /GitHub emails you each time something changes/);
+  const status = Array.from(panel.querySelectorAll('a')).find((a) => a.getAttribute('href') === '/status/');
+  assert.ok(status, 'the confirmation links to the status page');
+  assert.equal(status.textContent, 'check where it stands');
   // The draft is the submitter's only copy until the issue is actually filed.
   assert.ok(ctx.storedDraft(), 'the draft survives the hand-off');
   press(ctx, 'Submitted it? Delete the saved draft');

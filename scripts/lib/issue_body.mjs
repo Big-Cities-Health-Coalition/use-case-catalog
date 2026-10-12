@@ -7,10 +7,12 @@
  *
  *     <value>
  *
- * where `<value>` is `_No response_` when the submitter left it blank, a
- * comma-joined string for a multi-select dropdown, `- [x] Option` lines when
- * the field was rendered as checkboxes, and a markdown link or image embed
- * when the field was an `upload`. Every function here is pure and
+ * where `<value>` is `_No response_` when the submitter left it blank, the
+ * typed text of a single-line `input` (which is how select, multiselect and
+ * boolean questions are asked — see `coerceChoice`), a comma-joined string in
+ * issues from the older multi-select dropdown, `- [x] Option` lines when the
+ * field was rendered as checkboxes, and a markdown link or image embed when the
+ * field was an `upload`. Every function here is pure and
  * schema-driven — no field key is ever named. See test/scripts/issue_body.test.mjs.
  */
 
@@ -122,43 +124,130 @@ export function rawValue(sections, field) {
 }
 
 /**
- * Selected values of a multiselect, tolerating all three renderings GitHub can
- * produce: a comma-joined dropdown value, `- [x] Option` checkboxes, and one
- * option per line. Options are matched longest-first so an option containing a
- * comma survives the split.
+ * A choice answer reduced to what is compared: code-span backticks dropped,
+ * whitespace collapsed, case folded. Both the typed text and the schema options
+ * go through it, so a hand-typed `pilot` or `` `Pilot` `` finds `Pilot`.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function choiceKey(value) {
+  return String(value ?? '')
+    .replace(/`/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * One typed piece of a choice answer, tidied for comparison: list bullets,
+ * wrapping quotes and a closing full stop are not part of the answer.
+ * @param {string} piece
+ * @returns {string}
+ */
+function tidyPiece(piece) {
+  const text = choiceKey(piece)
+    .replace(/^[-*]\s+/, '')
+    .replace(/^["'“”‘’]+/, '');
+  // Trailing quotes and periods by hand: an unanchored `[…]+$` retries at every position
+  // and is quadratic on a long run of quotes.
+  let end = text.length;
+  while (end > 0 && (QUOTES.has(text[end - 1]) || text[end - 1] === '.')) end -= 1;
+  return text.slice(0, end).trim();
+}
+
+const QUOTES = new Set(['"', "'", '“', '”', '‘', '’']);
+
+/**
+ * The canonical option a typed piece names, or undefined.
+ * @param {Map<string, string>} byKey choiceKey(option) -> option
+ * @param {string} piece
+ * @returns {string|undefined}
+ */
+function optionFor(byKey, piece) {
+  return byKey.get(choiceKey(piece)) ?? byKey.get(tidyPiece(piece));
+}
+
+/** What GitHub (or an old dropdown) writes for an unanswered question. */
+const NO_ANSWER = new Set([NO_RESPONSE, 'none']);
+
+/**
+ * Split a multiselect answer into the options it names and the pieces that name
+ * none. Accepted: comma- or semicolon-separated text (what /submit/ sends, and
+ * what GitHub's multi-select dropdown wrote), one option per line, list bullets,
+ * and `- [x] Option` checkbox lines (unticked ones are skipped).
+ *
+ * A separator may sit inside an option (`Finance, procurement & contracts`), so
+ * the text is cut at every separator and, from each piece, the longest run of
+ * consecutive pieces that rejoins into an option is taken; a piece that starts
+ * no such run is unmatched. Matching is case- and spacing-insensitive and always
+ * returns the schema's own spelling. With no options declared everything typed
+ * is kept, in order.
+ *
+ * @param {string} raw
+ * @param {unknown[]} options declared options (may be empty for free lists)
+ * @returns {{selected: string[], unmatched: string[], all: string[]}} each
+ *   de-duplicated; `all` is both, in the order they were typed
+ */
+function splitChoices(raw, options = []) {
+  const byKey = new Map();
+  for (const option of options.map(String)) if (option.trim()) byKey.set(choiceKey(option), option);
+  // No run longer than the most separators any option holds can rejoin into
+  // one, which keeps a hostile line of thousands of commas linear.
+  const longestRun = Math.max(1, ...[...byKey.keys()].map((key) => key.split(/[,;]/).length));
+  const selected = [];
+  const unmatched = [];
+  const all = [];
+
+  for (const line of String(raw ?? '').split('\n')) {
+    const checkbox = /^\s*[-*]\s*\[([xX ])\]\s*(.*)$/.exec(line);
+    if (checkbox && checkbox[1].trim() === '') continue; // unticked
+    const text = checkbox ? checkbox[2] : line.replace(/^\s*[-*]\s+/, '');
+    // Pieces and the separators between them, so a rejoined run is exact.
+    const parts = text.split(/([,;])/);
+    const pieces = parts.filter((_, index) => index % 2 === 0);
+    const seps = parts.filter((_, index) => index % 2 === 1);
+
+    for (let start = 0; start < pieces.length;) {
+      let taken = 0;
+      if (byKey.size > 0) {
+        for (let end = Math.min(pieces.length, start + longestRun); end > start; end -= 1) {
+          let joined = pieces[start];
+          for (let i = start + 1; i < end; i += 1) joined += seps[i - 1] + pieces[i];
+          const option = optionFor(byKey, joined);
+          if (option !== undefined) {
+            selected.push(option);
+            all.push(option);
+            taken = end - start;
+            break;
+          }
+        }
+      }
+      if (taken === 0) {
+        const piece = pieces[start].replace(/`/g, '').trim();
+        if (tidyPiece(piece)) {
+          (byKey.size > 0 ? unmatched : selected).push(piece);
+          all.push(piece);
+        }
+        taken = 1;
+      }
+      start += taken;
+    }
+  }
+  const unique = (list) => [...new Set(list)];
+  return { selected: unique(selected), unmatched: unique(unmatched), all: unique(all) };
+}
+
+/**
+ * Selected values of a multiselect, tolerating every rendering GitHub or a
+ * person can produce (see splitChoices), in the order they were typed. Options
+ * come back in the schema's spelling; a piece that names no option is kept as
+ * typed — `coerceChoice` is the strict reading the scaffolder uses.
  * @param {string} raw
  * @param {string[]} options declared options (may be empty for free lists)
  * @returns {string[]}
  */
 export function parseMultiselect(raw, options = []) {
-  const byLength = [...options].map(String).sort((a, b) => b.length - a.length);
-  const selected = [];
-
-  for (const line of String(raw ?? '').split('\n')) {
-    const checkbox = /^\s*[-*]\s*\[([xX ])\]\s*(.*)$/.exec(line);
-    let rest;
-    if (checkbox) {
-      if (checkbox[1].trim() === '') continue; // unticked
-      rest = checkbox[2].trim();
-    } else {
-      rest = line.replace(/^\s*[-*]\s+/, '').trim();
-    }
-
-    while (rest.length > 0) {
-      const match = byLength.find((opt) => rest.toLowerCase().startsWith(opt.toLowerCase()));
-      if (match) {
-        selected.push(match);
-        rest = rest.slice(match.length);
-      } else {
-        const idx = rest.indexOf(',');
-        const piece = (idx === -1 ? rest : rest.slice(0, idx)).trim();
-        if (piece) selected.push(piece);
-        rest = idx === -1 ? '' : rest.slice(idx);
-      }
-      rest = rest.replace(/^\s*,\s*/, '').trim();
-    }
-  }
-  return [...new Set(selected)];
+  return splitChoices(raw, options).all;
 }
 
 /**
@@ -173,13 +262,81 @@ export function parseList(raw) {
     .filter(Boolean);
 }
 
+/** A boolean answer that means yes, after tidying (GitHub's checkbox `[x]` included). */
+const YES = /^(true|yes|y|on|1|checked|x|\[x\])$/i;
+/** …and one that means no. */
+const NO = /^(false|no|n|off|0|unchecked|\[ \])$/i;
+
 /**
  * Truthiness of a boolean answer ("Yes", "true", a ticked checkbox…).
  * @param {string} raw
  * @returns {boolean}
  */
 export function parseBoolean(raw) {
-  return /^(true|yes|y|on|1|checked|\[x\])$/i.test(String(raw ?? '').trim());
+  return readBoolean(raw).value;
+}
+
+/**
+ * A boolean answer read strictly: yes, no, blank, or not recognised. A ticked
+ * `- [x] …` checkbox line is yes and an unticked one no; anything that is
+ * neither yes nor no reads as false and is reported back as `unmatched`.
+ * @param {string} raw
+ * @returns {{value: boolean, unmatched: string[]}}
+ */
+function readBoolean(raw) {
+  const text = String(raw ?? '').trim();
+  const checkbox = /^[-*]\s*\[([xX ])\]/.exec(text);
+  if (checkbox) return { value: checkbox[1] !== ' ', unmatched: [] };
+  const answer = tidyPiece(text);
+  if (YES.test(answer)) return { value: true, unmatched: [] };
+  if (!answer || NO.test(answer) || NO_ANSWER.has(answer)) return { value: false, unmatched: [] };
+  return { value: false, unmatched: [text] };
+}
+
+/**
+ * A `select`, `multiselect` or `boolean` answer as front matter, plus what in it
+ * named no option.
+ *
+ * The issue form asks these questions as single-line text inputs — GitHub
+ * prefills nothing else from /submit/'s link — so the answer is whatever was
+ * typed. It is matched leniently (case, spacing, backticks, quotes, a closing
+ * full stop) onto the schema's own spelling. An answer that matches no option is
+ * left out of `value` and returned in `unmatched`, so the caller can tell the
+ * reviewer rather than commit a value `npm run validate` rejects. Blank,
+ * `_No response_` and `None` (a dropdown's empty choice, in issues the old form
+ * rendered) are no answer at all, unless `None` really is an option.
+ *
+ * A field without options is free text: a select keeps what was typed, a
+ * multiselect every piece.
+ *
+ * @param {{type?: string, options?: unknown[]}} field
+ * @param {string} raw
+ * @returns {{value: string|string[]|boolean, unmatched: string[]}}
+ */
+export function coerceChoice(field, raw) {
+  const type = String(field?.type ?? '');
+  const options = Array.isArray(field?.options) ? field.options : [];
+  const text = String(raw ?? '').trim();
+  if (type === 'boolean') return readBoolean(text);
+
+  const byKey = new Map(
+    options
+      .map(String)
+      .filter((o) => o.trim())
+      .map((o) => [choiceKey(o), o])
+  );
+  const named = optionFor(byKey, text);
+  const empty = !tidyPiece(text) || NO_ANSWER.has(choiceKey(text));
+  if (type === 'multiselect') {
+    if (named === undefined && empty) return { value: [], unmatched: [] };
+    const { selected, unmatched } = splitChoices(text, options);
+    return { value: selected, unmatched };
+  }
+  // select
+  if (named !== undefined) return { value: named, unmatched: [] };
+  if (empty) return { value: '', unmatched: [] };
+  if (byKey.size === 0) return { value: text, unmatched: [] };
+  return { value: '', unmatched: [text] };
 }
 
 /**
@@ -391,14 +548,14 @@ export function coerce(field, raw) {
   const text = String(raw ?? '').trim();
 
   switch (type) {
+    case 'select':
     case 'multiselect':
-      return text ? parseMultiselect(text, Array.isArray(field.options) ? field.options : []) : [];
+    case 'boolean':
+      return coerceChoice(field, text).value;
     case 'list':
       return text ? parseList(text) : [];
     case 'links':
       return text ? parseLinks(text) : [];
-    case 'boolean':
-      return parseBoolean(text);
     case 'number': {
       if (!text) return '';
       const direct = Number(text.replace(/[\s,]/g, ''));

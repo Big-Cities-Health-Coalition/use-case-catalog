@@ -8,6 +8,261 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.5] — 2026-10-06
+
+Fifth candidate. rc.4's live BCHC update passed and deployed. This candidate makes
+*Suggest an edit* open a plain-language edit-request form and adds a footer
+form for reporting a problem with the site (#91), lets the status page follow a
+draft pull request's number to its submission (#90), leaves a skipped file
+upload blank (#89) and updates `source-map-js` for GHSA-68fv-2mgg-jv7q (#92).
+
+### Added
+
+- **Suggest an edit** now opens a short form instead of GitHub's file editor.
+  Every entry page's link opens `.github/ISSUE_TEMPLATE/edit-entry.yml` with
+  the entry's slug and an *Edit: &lt;entry title&gt;* title filled in. The
+  reader says how they are connected to the entry, describes in plain words
+  what should change, and can leave a name and email for follow-up questions.
+  The issue is labelled `content:edit-request`, and the new `edit-request.yml`
+  workflow posts one acknowledgement with its number and `/status/` link and
+  marks it `status:received`. When the slug names no entry, the comment says
+  so and asks for the page address. Nothing is applied automatically: a
+  maintainer edits the entry on a pull request labelled `content:edit-request`
+  that says `Closes #N`, and merging it publishes the request like any other
+  form's. A coding agent the maintainer assigns can draft that pull request by
+  following the new [docs/edit-requests.md](docs/edit-requests.md); a person
+  always merges. Run **Bootstrap labels** once to create the new label, and
+  reword the acknowledgement under `notifications.messages` (`edit_request`,
+  `edit_request_unknown_entry`) if you like. See
+  [Edit requests](docs/admin-guide.md#edit-requests).
+- **Report a problem with the site.** The per-entry *Report an issue* link,
+  which opened a blank pre-titled issue, is gone: entry pages keep only
+  *Suggest an edit*. Instead the footer of every page links to a short new
+  form, `.github/ISSUE_TEMPLATE/site-problem.yml`, that asks what went wrong
+  and, optionally, the page address and the browser and device. It carries no
+  label, so no content workflow runs on it: `missing-label.yml` acknowledges a
+  report from outside the project and labels it `needs-triage` for a
+  maintainer to triage by hand. See
+  [Site problem reports](docs/admin-guide.md#site-problem-reports).
+
+### Fixed
+
+- `/status/` answered a draft pull request's number with "isn't a submission. It
+  belongs to something else on GitHub", a dead end for a submitter who copied
+  the number they saw most often. It now reads the draft's `Closes #N` (or
+  `Fixes #N`, `Resolves #N`) line and shows that submission, saying "#101 is the
+  draft for submission #97." A pull request that links nothing, or links an
+  issue that is not a submission, still gets "isn't a submission", now worded to
+  ask for the number of the submission itself rather than of its draft. The page
+  makes at most one follow-up request, with the same timeout, rate-limit
+  fallback and handling of overlapping lookups as the first. See
+  [Status page](docs/configuration.md#status-page).
+- A submission that attached no slide deck still had its front matter name
+  one: an unanswered `file` question (GitHub's `_No response_`) was written as
+  `/<entry path>/<slug>/<filename>`, a path no file was ever saved to. The
+  scaffolder now leaves the field blank, the same as any other unanswered
+  question; an attachment the submitter did upload is still downloaded into the
+  entry folder and named by its path.
+
+### Security
+
+- `source-map-js` is updated from 1.2.1 to 1.2.2, which fixes GHSA-68fv-2mgg-jv7q
+  (high: an indexed source map with crafted section offsets could stall the event
+  loop). The advisory failed `npm run security:audit`. The package is a dev-only
+  dependency that comes in through `postcss` and through `jsdom`'s `css-tree`.
+  Both already accept `^1.2.1`, so only the lockfile changes.
+
+## [1.11.0-rc.4] — 2026-10-05
+
+Fourth candidate. rc.3's live BCHC update stopped before opening a pull request
+on a test that read the template's sample issue; #86 fixes it and a second test
+that would have failed once a deployment switched email submission off. This candidate also runs
+only the content check on a submission's pull request (#87).
+
+### Changed
+
+- A submission's pull request now runs only the content check. Every code
+  check used to run on it as well (lint, unit and Ruby tests, coverage, the
+  preset build matrix, Quality, Supply chain, CodeQL, Performance and scale,
+  workflow lint), so a reviewer could meet a red code check that said nothing
+  about the entry, and a missing required field showed up inside **Lint, test
+  and build**. A pull request whose every changed file is entry content (inside
+  `<entry.path>/<slug>/`, of a type a submission produces, or
+  `_data/derivatives.json`) now runs **Content: entries and site build**, a new
+  job in **Validate Content** that validates the front matter and data files,
+  checks the image derivatives, builds the site and checks its links. The code
+  jobs are skipped with `if:`, which GitHub counts as passed, so required checks
+  never wait; the bots' dispatched runs follow the same rule and post the
+  content check as a commit status. A pull request that touches any other file,
+  including every PHCT update, runs everything as before. The rule lives in
+  `scripts/lib/content_only.mjs` and the shared `content-only.yml` job; see
+  [which checks a submission runs](docs/admin-guide.md#which-checks-a-submission-runs).
+  Add **Content: entries and site build** to your branch ruleset's required
+  checks so a red content check blocks the merge.
+
+### Fixed
+
+- rc.3's live BCHC update stopped before opening a pull request: a new test
+  checked the old dropdown rendering against the template's sample issue, whose
+  questions differ from a deployment's own schema. The test now builds that
+  issue from the repository's schema, so it runs the same check anywhere.
+- The build test for `/submit/`'s email route read the deployment's own
+  `site.yml`, so a deployment that sets `submit.fallback_email: false` would
+  fail its next update. It now runs on a build variant that sets its own address.
+
+## [1.11.0-rc.3] — 2026-10-05
+
+Third candidate. rc.2 went live in BCHC, where a practice run showed `/submit/`
+losing every dropdown answer on the way to GitHub.
+
+### Fixed
+
+- Every submission sent from `/submit/` lost its select, multiselect and
+  yes/no answers. The page carries each answer to GitHub in the issue link, but
+  GitHub prefills only an issue form's text fields from a link, and the
+  generated `new-entry.yml` asked those questions as dropdowns, so they opened
+  empty. The submitter had to pick them all again, and a required one blocked
+  *Submit new issue* until they did. They are now single-line text inputs that
+  arrive filled in. The field's help (or a note above it when the list is long)
+  says what to type: the options, a multiselect's options separated by commas,
+  **Yes** for a yes/no question. The scaffolder maps typed answers onto the
+  schema's options regardless of case or spacing, keeps an option that contains
+  a comma whole, and still reads issues filed with the old dropdown form. An
+  answer that matches no option is left out of the front matter rather than
+  failing **Validate Content**, and the pull request lists it under a new
+  **Answers to fix** block for the maintainer. On `/submit/`, an `image`
+  question (an upload on GitHub, so it cannot be prefilled either) is now
+  listed under the answers to bring across by hand. Deployments get the fix
+  through the PHCT updater: its pull request regenerates `new-entry.yml` from
+  your schema. Nothing in the schema or existing entries changes.
+- A deployment that kept `organization.contact_email` had no way to turn off
+  the "Email it instead" route on `/submit/`. A blank `submit.fallback_email`
+  falls back to the contact email, and so did `false`, because Liquid's
+  `default` treats `false` as empty. `submit.fallback_email: false` now removes
+  every email route from the page: the button, the `mailto:` links, the "Email
+  the maintainers" line on the paused notice, and the sentences that point at
+  *Email it instead*. A blank or missing value works as before.
+- The admin guide said to decline an "also deployed by" submission by closing
+  the issue. Nothing runs when an issue is closed, so that left the pull
+  request open, the status at `status:in-review`, and the listing one merge
+  away from the site. The guide now says to close the pull request without
+  merging. That is the decline: the submitter gets the comment on their issue,
+  the status becomes `status:declined`, and the issue is closed as not planned.
+
+## [1.11.0-rc.2] — 2026-10-05
+
+Second candidate. rc.1's live BCHC update stopped before opening a pull request
+because the showcase landing assumed every module is named in `site.yml`.
+
+### Fixed
+
+- The showcase landing linked to `/status/` without building it when
+  `site.yml` predates the status module (no `modules.status` key), which
+  failed the deployment's build matrix. The landing now switches off every
+  module `_data/modules.yml` declares.
+
+## [1.11.0-rc.1] — 2026-10-05
+
+**Upgrading a deployment.** Run **Bootstrap labels** once after updating: it
+adds the five `status:*` labels and `needs-triage` (the automation also creates
+them on first use). Nothing needs configuring; the optional `notifications:`
+block in `_data/site.yml` changes the wording. A schema field keyed `body`,
+`title`, `labels`, `assignees`, `milestone`, `projects` or `template` keeps its
+key everywhere (front matter, labels, the scaffolder); only its element id in
+the generated issue form changes, to `entry_<key>`, so regenerate and commit
+`.github/ISSUE_TEMPLATE/new-entry.yml` (the updater does this).
+
+### Added
+
+- A "Check your submission" page at `/status/` (new `status` module, on by
+  default). A submitter types the number GitHub gave their submission, or
+  follows a `/status/?n=<number>` link, and sees its title, the date it was
+  sent, a step indicator and what happens next. The stage comes from the
+  issue's `status:received`, `status:in-review`, `status:changes-requested`,
+  `status:published` or `status:declined` label, and from the open/closed
+  state when there is none. It reads GitHub's public API with no token; when
+  GitHub refuses, the network fails or JavaScript is off it offers a plain
+  link to the issue instead. Copy is in the new optional `status:` block of
+  `_data/site.yml`. A `site.yml` with no `modules.status` key builds the page
+  too; set it to `false` if your repository is private, since GitHub's API
+  cannot see private issues.
+- The submit page's "what happens next" and its confirmation panel now tell
+  people their submission gets a number, to keep it, that GitHub emails them
+  about it, and (when the status module is on) where to check on it. The
+  footer gains a *Check a submission* link.
+- Submitters hear what happens to their submission, on their own issue, which
+  GitHub emails to them. Every content form now acknowledges a new issue with
+  its number, what happens next, the turnaround and how updates arrive; the
+  submitter is mentioned once on the draft so they are subscribed to the
+  review; and a new **Submission status** workflow (`submission-status.yml`)
+  comments when a reviewer asks for changes, moves a submission to the
+  committee or a partner, or declines it (closing the issue as not planned,
+  with the appeal route). Only a review by the owner, an organization member
+  or a collaborator counts, and closing a draft while another for the same
+  issue is open (without `review:declined`) is not a decline. Drafts from the
+  other forms (events, cohort years, schedules, attachments, refreshes, "also
+  deployed by", setup) are covered when closed: unmerged is a decline, merged
+  is published; the Apply setup draft now carries `content:site-config` like
+  the rest. The deploy's "now live" comment is unchanged.
+- One status label on every submission issue: `status:received`,
+  `status:in-review`, `status:changes-requested`, `status:published`,
+  `status:declined`, for the `/status/` page.
+- An issue that no form claimed is answered too: an outsider's issue gets an
+  acknowledgement and `needs-triage`; a form submission whose label is missing
+  still gets the "label missing" instructions.
+- `notifications:` in `_data/site.yml`: turnaround, appeal line, reviewer
+  names, a logo and per-message overrides. All wording lives in one module,
+  `scripts/lib/notify.mjs`; comments carry a hidden marker so a re-run never
+  posts twice.
+
+### Fixed
+
+- An edit to a submission issue no longer erases a reviewer's work. The intake
+  workflows rebuilt and force-pushed the draft branch on every edit; now a
+  branch with any commit not made by the automation (or a merge from **Update
+  branch**) is left alone, the reviewer gets a comment on the draft listing
+  which answers changed, and the submitter is told their edit arrived. Every
+  intake workflow whose draft branch can already exist pushes it itself with
+  `--force-with-lease`, so a reviewer push during a run makes the push fail
+  instead of vanishing; new-event and new-year no longer go through
+  create-pull-request, which force-pushes over what it fetched.
+- An edit that changed a submission's title (or another answer its branch name
+  comes from) opened a second draft, and closing the stale one declined the
+  submission while the other was still open. The entry, event, "also deployed
+  by" and refresh workflows now update the draft already open for the issue,
+  on its branch.
+- The write-up of an entry was not prefilled from `/submit/`: GitHub's
+  new-issue page reads `?body=` as the plain issue body, so the question whose
+  id was `body` showed its default text instead. Field keys GitHub reserves
+  (`body`, `title`, `labels`, `assignees`, `milestone`, `projects`,
+  `template`) now get the id `entry_<key>` in the generated form, and the
+  submit page (scripted and no-script) sends the answer under that name, from
+  one shared helper (`assets/js/configurator/issue-form-ids.js`). The issue
+  title also keeps its `[Entry] ` prefix now, which the Title answer used to
+  overwrite. The schema check rejects a key that would repeat a remapped id
+  (`entry_body` beside `body`).
+- GitHub hides an issue form whose descriptions break its limits, and every
+  `?template=` link then opens a blank issue. The generator now keeps the
+  form's description and every question's description within 3 to 200
+  characters, moving the rest into a short note just above the question (or at
+  the top of the form) so no help text is lost. `npm run generate` and
+  `npm run validate` fail, naming the file and the field, when any form in
+  `.github/ISSUE_TEMPLATE/` breaks a limit. The shipped `schedule.yml` and
+  `also-deployed-by.yml` forms were over the limit and are fixed.
+- New-year and update-schedule pull requests now say `Closes #N`, so merging
+  them closes the issue and the issue can follow them.
+- Template tests that named a shipped schema field key (`body`, `deck_pdf`,
+  `area` and others) failed on a deployment whose schema names its fields
+  differently; they now read the schema or use a small schema of their own.
+
+### Security
+
+- `brace-expansion` is updated to 5.0.12 (GHSA-qhr7-859c-m2p7,
+  GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr). `braces` (GHSA-vfj7-8cjw-p6xm) has
+  no patched release; it reaches the tree only through Tailwind 3 at build
+  time, with this repository's own content globs, so it is registered as a P2
+  exception in `quality/security-exceptions.yml` until 2026-12-31 (#78).
+
 ## [1.10.0] — 2026-09-28
 
 Stable release. Records-only promotion of the accepted `v1.10.0-rc.2`
@@ -887,7 +1142,6 @@ about a hundred lines of CSS moved rather than added.
 - `docs/design-system.md` gains a Surfaces section and the type table now
   matches the built site; `docs/design-brief.md` carries an amendment note.
 
-
 ## [1.3.0] — 2026-08-17
 
 Contributor panel, wave 2: the six decisions left open by v1.2.0 were taken
@@ -1305,7 +1559,12 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...HEAD
+[1.11.0-rc.5]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...v1.11.0-rc.5
+[1.11.0-rc.4]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.3...v1.11.0-rc.4
+[1.11.0-rc.3]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.2...v1.11.0-rc.3
+[1.11.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.1...v1.11.0-rc.2
+[1.11.0-rc.1]: https://github.com/crypticpy/phct/compare/v1.10.0...v1.11.0-rc.1
 [1.10.0]: https://github.com/crypticpy/phct/compare/v1.10.0-rc.2...v1.10.0
 [1.10.0-rc.2]: https://github.com/crypticpy/phct/compare/v1.10.0-rc.1...v1.10.0-rc.2
 [1.10.0-rc.1]: https://github.com/crypticpy/phct/compare/v1.9.0...v1.10.0-rc.1

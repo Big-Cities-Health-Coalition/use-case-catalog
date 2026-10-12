@@ -10,6 +10,15 @@
 
 import { toYaml, isPlainObject } from './yaml-emit.js';
 import { sortByWeight } from './schema-validate.js';
+import { DESCRIPTION_MAX, DESCRIPTION_MIN, fitHelp } from './issue-form-limits.js';
+import './issue-form-ids.js'; // a classic script shared with /submit/; sets globalThis.PHCTIssueForm
+
+/**
+ * A field's element id: its key, except a key GitHub's new-issue page reads as
+ * its own parameter (`body`, `title`, ...) becomes `entry_<key>`. handoff.js
+ * prefills under the same name. See issue-form-ids.js.
+ */
+const { issueFormId } = globalThis.PHCTIssueForm;
 
 /** Field types that render as a single-line GitHub `input`. */
 const INPUT_TYPES = new Set(['text', 'url', 'email', 'date', 'number']);
@@ -33,6 +42,36 @@ const TYPE_GUIDANCE = {
   image: 'Attach the image here and the automation commits it with the entry.',
 };
 
+/** Field types asked as a single-line text input that takes the answer as typed text. */
+const CHOICE_TYPES = new Set(['select', 'multiselect', 'boolean']);
+
+/**
+ * How to answer a choice question in words, since the issue form asks it as a
+ * text input. GitHub prefills only text fields (`input`, `textarea`) from the
+ * query string — a `dropdown` opened empty and every answer /submit/ carried
+ * was lost — so these questions are typed, and this says what to type: the
+ * exact option text /submit/ sends, a multiselect's answers joined by commas
+ * as it sends them, and a boolean's "Yes". The scaffolder matches the text back
+ * onto the options leniently (scripts/lib/issue_body.mjs, `coerceChoice`).
+ *
+ * @param {object} field
+ * @param {string} type
+ * @returns {string} '' for a select or multiselect without options
+ */
+function choiceGuidance(field, type) {
+  if (type === 'boolean') {
+    return field.required === true ? 'Type Yes to confirm.' : 'Type Yes to confirm, or leave it blank.';
+  }
+  const options = (Array.isArray(field.options) ? field.options : [])
+    .map((option) => String(option))
+    .filter((option) => option.trim() !== '');
+  if (options.length === 0) return '';
+  const named = options.map((option) => `\`${option}\``).join(', ');
+  return type === 'multiselect'
+    ? `Type one or more, separated by commas: ${named}.`
+    : `Type one of: ${named}.`;
+}
+
 function capitalizeFirst(str) {
   const s = String(str ?? '').trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -41,15 +80,6 @@ function capitalizeFirst(str) {
 function lowercaseFirst(str) {
   const s = String(str ?? '').trim();
   return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
-}
-
-/** Join sentence fragments into one help string, punctuating as it goes. */
-function joinSentences(parts) {
-  return parts
-    .map((part) => String(part ?? '').trim())
-    .filter(Boolean)
-    .map((part) => (/[.!?:)\]]$/.test(part) ? part : `${part}.`))
-    .join(' ');
 }
 
 /**
@@ -116,9 +146,32 @@ function fileLinkHint(schema) {
 }
 
 /**
+ * A field's help text, kept within GitHub's description limit
+ * (issue-form-limits.js). Everything is kept when it fits. Otherwise the
+ * generator's own guidance moves out first, then the prompt, so the schema
+ * `description` is what stays under the label; whatever moved out becomes
+ * `overflow`, shown in a markdown element just above the control.
+ *
+ * @param {object} field
+ * @param {string} type
+ * @param {{fileHint?: string}} context
+ * @returns {{description: string, overflow: string}}
+ */
+function fieldHelp(field, type, context) {
+  const { text, overflow } = fitHelp([
+    { text: field.prompt, rank: 1 },
+    { text: field.description, rank: 2 },
+    { text: CHOICE_TYPES.has(type) ? choiceGuidance(field, type) : TYPE_GUIDANCE[type], rank: 0 },
+    { text: type === 'file' ? context.fileHint : '', rank: 0 },
+  ]);
+  return { description: text.length >= DESCRIPTION_MIN ? text : '', overflow };
+}
+
+/**
  * The one control this field becomes in the issue form, or null to skip it.
  * @param {object} field
  * @param {{fileHint?: string}} [context] schema-wide copy a control may append
+ * @returns {{control: object, overflow: string} | null}
  */
 function controlFor(field, context = {}) {
   const key = String(field.key ?? '').trim();
@@ -130,12 +183,7 @@ function controlFor(field, context = {}) {
   const placeholder = String(field.placeholder ?? '');
   const attributes = { label };
 
-  const description = joinSentences([
-    field.prompt,
-    field.description,
-    TYPE_GUIDANCE[type],
-    type === 'file' ? context.fileHint : '',
-  ]);
+  const { description, overflow } = fieldHelp(field, type, context);
   if (description) attributes.description = description;
 
   // GitHub issue forms accept attachments through an `upload` element, so a
@@ -145,10 +193,18 @@ function controlFor(field, context = {}) {
   // `validations.required` on an upload is only enforced on public
   // repositories — see docs/content-model.md.
   if (UPLOAD_TYPES.has(type)) {
-    return { type: 'upload', id: key, attributes, validations: { required, accept: acceptFor(field) } };
+    return {
+      control: {
+        type: 'upload',
+        id: issueFormId(key),
+        attributes,
+        validations: { required, accept: acceptFor(field) },
+      },
+      overflow,
+    };
   }
 
-  const item = { type: 'input', id: key, attributes };
+  const item = { type: 'input', id: issueFormId(key), attributes };
 
   if (INPUT_TYPES.has(type)) {
     if (placeholder.trim()) attributes.placeholder = placeholder;
@@ -159,33 +215,20 @@ function controlFor(field, context = {}) {
     item.type = 'textarea';
     if (placeholder.includes('\n')) attributes.value = placeholder;
     else if (placeholder.trim()) attributes.placeholder = placeholder;
-  } else if (type === 'multiselect') {
-    // A multi-select dropdown, not `checkboxes`: GitHub can prefill a dropdown
-    // from the query string and enforce `validations.required` on it, and can
-    // do neither for checkboxes. The cost is that `option_meta.description`
-    // has nowhere to live in the raw GitHub form — the web form still shows it.
-    item.type = 'dropdown';
-    attributes.multiple = true;
-    attributes.options = (Array.isArray(field.options) ? field.options : [])
-      .map((option) => String(option))
-      .filter((option) => option.trim() !== '');
-  } else if (type === 'select') {
-    item.type = 'dropdown';
-    attributes.options = (Array.isArray(field.options) ? field.options : [])
-      .map((option) => String(option))
-      .filter((option) => option.trim() !== '');
-  } else if (type === 'boolean') {
-    item.type = 'dropdown';
-    attributes.options = ['Yes', 'No'];
+  } else if (CHOICE_TYPES.has(type)) {
+    // A text input, not a dropdown: GitHub prefills a dropdown from nothing,
+    // so /submit/'s answer was dropped and a required one blocked the Create
+    // button. The help names the answers (choiceGuidance); the schema's
+    // `option_meta` descriptions live on this site's own form.
   } else if (placeholder.trim()) {
     attributes.placeholder = placeholder;
   }
 
-  // Every control this generator emits (input, textarea, dropdown) accepts
+  // Every control this generator emits (input, textarea) accepts
   // `validations`. GitHub only enforces it on public repositories, so the web
   // form's own validation stays the first line of defence.
   item.validations = { required };
-  return item;
+  return { control: item, overflow };
 }
 
 /**
@@ -211,7 +254,7 @@ export function issueTemplateFromSchema(schema, site = {}) {
   if (!hasTitleField) {
     body.push({
       type: 'input',
-      id: 'title',
+      id: issueFormId('title'),
       attributes: {
         label: 'Title',
         description: `A short, specific name for this ${lowercaseFirst(singular)}.`,
@@ -234,16 +277,31 @@ export function issueTemplateFromSchema(schema, site = {}) {
       }
     }
     for (const field of section.fields) {
-      const control = controlFor(field, context);
-      if (control) body.push(control);
+      const built = controlFor(field, context);
+      if (!built) continue;
+      // Help that did not fit under the label reads just above the control.
+      if (built.overflow) {
+        body.push({
+          type: 'markdown',
+          attributes: { value: `**${built.control.attributes.label}:** ${built.overflow}` },
+        });
+      }
+      body.push(built.control);
     }
   }
 
+  // The form's own description has the same limit. The submit intro is
+  // written for the web page, so a long one keeps its leading sentences here
+  // and the rest opens the form.
+  const intro =
+    String(site?.submit?.intro ?? '').trim() ||
+    `Propose a new ${lowercaseFirst(singular)}${siteName ? ` for ${siteName}` : ''}. A maintainer reviews it as a pull request.`;
+  const top = intro.length <= DESCRIPTION_MAX ? { text: intro, overflow: '' } : fitHelp([{ text: intro }]);
+  if (top.overflow) body.unshift({ type: 'markdown', attributes: { value: top.overflow } });
+
   const template = {
     name: `Submit a ${lowercaseFirst(singular)} (creates PR)`,
-    description:
-      String(site?.submit?.intro ?? '').trim() ||
-      `Propose a new ${lowercaseFirst(singular)}${siteName ? ` for ${siteName}` : ''}. A maintainer reviews it as a pull request.`,
+    description: top.text.length >= DESCRIPTION_MIN ? top.text : `Propose a new ${lowercaseFirst(singular)}.`,
     title: `[${capitalizeFirst(singular)}] `,
     labels: ['content:new-entry'],
     body,

@@ -282,6 +282,83 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
   );
 
   test(
+    'shipped: "Suggest an edit" opens the edit-request form for that entry, never the file editor',
+    { skip: needs('shipped') },
+    () => {
+      const { dir, siteDir } = built.get('shipped');
+      const noun = entryNoun(dir);
+      const repository = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8')).github
+        .repository;
+      const slugs = fs
+        .readdirSync(path.join(siteDir, noun.path), { withFileTypes: true })
+        // Entry folders only: the facet and A-Z landing pages share the path.
+        .filter(
+          (item) => item.isDirectory() && fs.existsSync(path.join(dir, noun.path, item.name, 'index.md'))
+        )
+        .map((item) => item.name);
+      assert.ok(slugs.length > 0, 'no entry pages were built');
+      for (const slug of slugs) {
+        const source = fs.readFileSync(path.join(dir, noun.path, slug, 'index.md'), 'utf8');
+        const { title } = yaml.load(/^---\n([\s\S]*?)\n---/.exec(source)[1]);
+        const document = page(siteDir, `${noun.path}/${slug}`);
+        const links = [...document.querySelectorAll('a.entry-action-link')].filter((a) =>
+          /Suggest an edit/.test(a.textContent)
+        );
+        assert.equal(links.length, 1, `${slug} has ${links.length} "Suggest an edit" links`);
+        const url = new URL(links[0].getAttribute('href'));
+        assert.equal(`${url.origin}${url.pathname}`, `https://github.com/${repository}/issues/new`, slug);
+        assert.equal(url.searchParams.get('template'), 'edit-entry.yml', slug);
+        assert.equal(url.searchParams.get('slug'), slug, slug);
+        assert.equal(url.searchParams.get('title'), `Edit: ${title}`, slug);
+        assert.equal(
+          document.querySelector(`a[href^="https://github.com/${repository}/edit/"]`),
+          null,
+          `${slug} still links to GitHub's file editor`
+        );
+      }
+    }
+  );
+
+  test(
+    'shipped: entry pages have no "Report an issue" link; the footer links to the site-problem form',
+    { skip: needs('shipped') },
+    () => {
+      const { dir, siteDir } = built.get('shipped');
+      const noun = entryNoun(dir);
+      const repository = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8')).github
+        .repository;
+      const slugs = fs
+        .readdirSync(path.join(siteDir, noun.path), { withFileTypes: true })
+        .filter(
+          (item) => item.isDirectory() && fs.existsSync(path.join(dir, noun.path, item.name, 'index.md'))
+        )
+        .map((item) => item.name);
+      assert.ok(slugs.length > 0, 'no entry pages were built');
+      const siteProblem = `https://github.com/${repository}/issues/new?template=site-problem.yml`;
+      for (const urlPath of [...slugs.map((slug) => `${noun.path}/${slug}`), '']) {
+        const document = page(siteDir, urlPath);
+        const where = urlPath || 'home';
+        assert.deepEqual(
+          [...document.querySelectorAll('a')]
+            .filter((a) => /Report an issue/i.test(a.textContent))
+            .map((a) => a.getAttribute('href')),
+          [],
+          `${where} still has a "Report an issue" link`
+        );
+        const links = [...document.querySelectorAll('footer a')].filter(
+          (a) => a.getAttribute('href') === siteProblem
+        );
+        assert.equal(links.length, 1, `${where} footer has ${links.length} site-problem links`);
+        const [link] = links;
+        assert.equal(link.textContent.trim(), 'Report a problem with the site (opens in a new tab)', where);
+        assert.equal(link.querySelector('.sr-only')?.textContent, ' (opens in a new tab)', where);
+        assert.equal(link.getAttribute('target'), '_blank', where);
+        assert.equal(link.getAttribute('rel'), 'noopener noreferrer', where);
+      }
+    }
+  );
+
+  test(
     'shipped: built-site distributions retain the complete third-party notice',
     { skip: needs('shipped') },
     () => {
@@ -738,6 +815,181 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
         !links.some((href) => href.includes('/governance/')),
         'a page links to the dropped /governance/'
       );
+    }
+  );
+
+  /* --------------------------------------------------------- the status module */
+
+  /** Every status hook on a page, in document order: `tag[attr=value]` for each
+   *  data-status-* and data-step-* attribute, plus ids, read through templates. */
+  function statusHooks(root) {
+    const hooks = [];
+    const walk = (node) => {
+      for (const el of node.querySelectorAll('*')) {
+        for (const { name, value } of el.attributes) {
+          if (/^data-(status|step)-/.test(name) || name === 'id') {
+            hooks.push(`${el.tagName.toLowerCase()}[${name}=${value}]`);
+          }
+        }
+        if (el.tagName === 'TEMPLATE') walk(el.content);
+      }
+    };
+    walk(root);
+    return hooks;
+  }
+
+  /** Whether a built page's HTML (templates included) has a link to /status/. */
+  const linksToStatus = (siteDir, urlPath) =>
+    /href="[^"]*\/status\/[^"]*"/.test(fs.readFileSync(path.join(siteDir, urlPath, 'index.html'), 'utf8'));
+
+  test(
+    'shipped: /status/ is built with a labelled number field for the site repository, and the footer and submit page link to it',
+    { skip: needs('shipped') },
+    () => {
+      const { dir, siteDir } = built.get('shipped');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      const doc = page(siteDir, 'status');
+      assert.equal(doc.querySelectorAll('h1').length, 1, '/status/ has no single <h1>');
+      const app = doc.querySelector('[data-status-app]');
+      assert.ok(app, 'no [data-status-app]');
+      assert.equal(app.getAttribute('data-repo'), site.github.repository);
+      const input = app.querySelector('form input[name="n"]');
+      assert.ok(input, 'the form has no input named n');
+      const label = doc.querySelector(`label[for="${input.id}"]`);
+      assert.ok(label && label.textContent.trim(), 'the number field has no label');
+      assert.ok(app.querySelector('form button[type="submit"]'), 'the form has no submit button');
+      assert.ok(doc.querySelector('[data-status-live][aria-live="polite"]'), 'no polite live region');
+      assert.ok(doc.querySelector('noscript'), 'no fallback for readers without JavaScript');
+      // The module script and the library it imports are both in the built site.
+      const script = doc.querySelector('script[type="module"][src$="/assets/js/status-page.js"]');
+      assert.ok(script, 'the page does not load assets/js/status-page.js');
+      for (const asset of ['assets/js/status-page.js', 'assets/js/lib/submission-status.js']) {
+        assert.ok(fs.existsSync(path.join(siteDir, asset)), `${asset} was not built`);
+      }
+      // test/fixtures/status-page.html stands in for this page in the jsdom
+      // tests; it must carry the same hooks, or those tests prove nothing.
+      const fixture = new JSDOM(
+        fs.readFileSync(path.join(dir, 'test', 'fixtures', 'status-page.html'), 'utf8')
+      ).window.document.body;
+      assert.deepEqual(
+        statusHooks(fixture),
+        statusHooks(doc.querySelector('main')),
+        'test/fixtures/status-page.html has drifted from the built /status/ page: regenerate it'
+      );
+
+      const footer = page(siteDir, '').querySelector('footer');
+      const link = [...footer.querySelectorAll('a')].find((a) => a.getAttribute('href').endsWith('/status/'));
+      assert.ok(link, 'the footer does not link to /status/');
+      assert.equal(link.textContent.trim(), site.status?.link_label ?? 'Check a submission');
+      const header = page(siteDir, '').querySelector('header');
+      assert.ok(
+        ![...header.querySelectorAll('a')].some((a) => a.getAttribute('href').endsWith('/status/')),
+        'the status page is not meant to be a header item'
+      );
+      const after = page(siteDir, 'submit').querySelector('template[data-after-submit]');
+      assert.ok(after, 'the submit page has no "After you submit" note');
+      assert.ok(
+        after.content.querySelector('a[href$="/status/"]'),
+        'the "After you submit" note does not link /status/'
+      );
+    }
+  );
+
+  test(
+    'shipped-empty: with the status module off the page is not built and nothing links to it',
+    { skip: needs('shipped-empty') },
+    () => {
+      const { dir, siteDir } = built.get('shipped-empty');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(site.modules.status, false, 'precondition: the variant switches status off');
+      assert.equal(fs.existsSync(path.join(siteDir, 'status', 'index.html')), false, '/status/ was built');
+      for (const urlPath of ['', 'submit', 'governance']) {
+        assert.equal(linksToStatus(siteDir, urlPath), false, `/${urlPath} links to the dropped /status/`);
+      }
+      // The submit page still says what happens next, just without the link.
+      const after = page(siteDir, 'submit').querySelector('template[data-after-submit]');
+      assert.match(after.content.textContent, /GitHub gives your submission a number/);
+    }
+  );
+
+  /* ------------------------------------------------- the email submission route */
+
+  /** Every email route /submit/ offers, read off <main> (templates and <noscript> included). */
+  function emailRoutes(siteDir) {
+    const main = page(siteDir, 'submit').querySelector('main');
+    const html = main.innerHTML;
+    return {
+      address: main.querySelector('form[data-submit-form]').getAttribute('data-fallback-email'),
+      button: Boolean(main.querySelector('[data-action="email"]')),
+      mailto: /href="mailto:/.test(html),
+      mentioned: /email it instead/i.test(html),
+    };
+  }
+
+  test(
+    'all-modules: /submit/ offers "Email it instead" to submit.fallback_email',
+    { skip: needs('all-modules') },
+    () => {
+      // Not the shipped variant: a deployment may switch email off in its own site.yml.
+      const { dir, siteDir } = built.get('all-modules');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(
+        site.submit.fallback_email,
+        'submissions@example.org',
+        'precondition: the variant sets it'
+      );
+      assert.deepEqual(emailRoutes(siteDir), {
+        address: site.submit.fallback_email,
+        button: true,
+        mailto: true,
+        mentioned: true,
+      });
+    }
+  );
+
+  test(
+    'legacy-font-names: a blank submit.fallback_email still falls back to organization.contact_email',
+    { skip: needs('legacy-font-names') },
+    () => {
+      const { dir, siteDir } = built.get('legacy-font-names');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(site.submit.fallback_email, '', 'precondition: the variant blanks submit.fallback_email');
+      assert.ok(site.organization.contact_email, 'precondition: organization.contact_email is set');
+      assert.deepEqual(emailRoutes(siteDir), {
+        address: site.organization.contact_email,
+        button: true,
+        mailto: true,
+        mentioned: true,
+      });
+    }
+  );
+
+  test(
+    'shipped-empty: submit.fallback_email: false turns every email route off, even with a contact email',
+    { skip: needs('shipped-empty') },
+    () => {
+      const { dir, siteDir } = built.get('shipped-empty');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal(
+        site.submit.fallback_email,
+        false,
+        'precondition: the variant sets submit.fallback_email: false'
+      );
+      assert.ok(site.organization.contact_email, 'precondition: organization.contact_email is still set');
+      assert.deepEqual(emailRoutes(siteDir), { address: '', button: false, mailto: false, mentioned: false });
+    }
+  );
+
+  test(
+    'legacy-font-names: a site.yml with no status key still builds /status/ and links to it',
+    { skip: needs('legacy-font-names') },
+    () => {
+      const { dir, siteDir } = built.get('legacy-font-names');
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      assert.equal('status' in site.modules, false, 'precondition: the variant deletes modules.status');
+      assert.ok(page(siteDir, 'status').querySelector('[data-status-app]'), '/status/ has no lookup form');
+      assert.ok(linksToStatus(siteDir, ''), 'the footer does not link to /status/');
+      assert.ok(linksToStatus(siteDir, 'submit'), 'the submit page does not link to /status/');
     }
   );
 });

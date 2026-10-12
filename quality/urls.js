@@ -71,11 +71,17 @@ function sampleEntryPaths(root = ROOT) {
   return [withImages, without].filter(Boolean).map((slug) => `/${entryPath()}/${slug}/`);
 }
 
-/** Whether `_data/site.yml` has the module switched on (off when unreadable). */
-function moduleOn(name) {
+/**
+ * Whether `_data/site.yml` has the module switched on (off when unreadable).
+ * `absent` is the answer when site.yml has no key for the module: `false` for
+ * the modules every site.yml has always listed, `true` for one added later that
+ * `_plugins/modules.rb` builds unless it is explicitly `false` (`status`).
+ */
+function moduleOn(name, absent = false) {
   try {
     const site = yaml.load(fs.readFileSync(path.join(ROOT, '_data', 'site.yml'), 'utf8'));
-    return Boolean(site?.modules?.[name]);
+    const value = site?.modules?.[name];
+    return value === undefined || value === null ? absent : Boolean(value);
   } catch {
     return false;
   }
@@ -87,9 +93,11 @@ function moduleOn(name) {
  * the page, so auditing it would only find a 404. `compare` belongs to the
  * catalog module and is gated the same way; `atoz` additionally needs entries,
  * because `_plugins/facet_pages.rb` skips the A–Z directory of an empty
- * catalog (the state a fresh `npm run setup` leaves behind).
+ * catalog (the state a fresh `npm run setup` leaves behind). `status` is null
+ * only when the status module is switched off; a site.yml with no `status` key
+ * still builds the page.
  * @param {string} base e.g. `http://127.0.0.1:4173`.
- * @returns {{ home: string, catalog: string, submit: string, governance: string|null, compare: string|null, atoz: string|null, notFound: string, entries: string[] }}
+ * @returns {{ home: string, catalog: string, submit: string, governance: string|null, compare: string|null, atoz: string|null, status: string|null, notFound: string, entries: string[] }}
  */
 function qualityUrls(base) {
   const at = (p) => `${base.replace(/\/$/, '')}${p}`;
@@ -101,6 +109,7 @@ function qualityUrls(base) {
     governance: moduleOn('governance') ? at('/governance/') : null,
     compare: moduleOn('catalog') ? at('/compare/') : null,
     atoz: moduleOn('catalog') && entries.length > 0 ? at(`/${entryPath()}/a-z/`) : null,
+    status: moduleOn('status', true) ? at('/status/') : null,
     notFound: at('/404.html'),
     entries: entries.map(at),
   };

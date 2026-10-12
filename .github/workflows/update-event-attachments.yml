@@ -55,6 +55,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
 
+      - name: Mark the submission received
+        if: github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
+
       - name: Extract routing fields
         id: extract
         run: node scripts/extract_event_fields.mjs
@@ -111,26 +120,44 @@ jobs:
           STEP_ERROR: ${{ steps.update.outputs.error }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const detail = process.env.STEP_ERROR || 'The step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'These attachments could not be applied yet.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix the problem and the automation will try again. If the message above does not tell you what to change, comment here and a maintainer will help.'
-              ].join('\n')
-            });
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason: detail } });
             core.setFailed(detail);
 
-      - name: Create pull request
+      # An edit to the issue re-runs this job, which rebuilds the branch and
+      # force-pushes it. Once a reviewer has committed to it that would erase
+      # their work, so it is only rebuilt while every commit on it is the
+      # automation's. See scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
         if: steps.update.outcome == 'success' && steps.update.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.update.outputs.branch }}
+        run: node scripts/branch_guard.mjs
+
+      - name: Hand the edit to the reviewer
+        if: steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.update.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH });
+
+      - name: Create pull request
+        if: steps.update.outcome == 'success' && steps.update.outputs.changed == 'true' && steps.guard.outputs.held != 'true'
         id: cpr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          # create-pull-request force-pushes over whatever it fetches. That is
+          # safe here only because the branch name carries a timestamp, so it
+          # is new on every run and holds no reviewer's work (see
+          # scripts/branch_guard.mjs). A stable name needs the self-push
+          # pattern new-entry.yml uses.
           # With CONTENT_BOT_TOKEN the pull request has a real author and the
           # normal `pull_request` triggers fire; without it the step below
           # dispatches the checks by hand.
@@ -179,28 +206,22 @@ jobs:
           PR_OPERATION: ${{ steps.cpr.outputs.pull-request-operation }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             // An edited issue updates the existing pull request; say that
             // instead of repeating the full first-time comment.
-            const body = process.env.PR_OPERATION === 'updated'
-              ? [
-                  'Updated the pull request from your edit:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'The diff there now shows the new attachments.'
-                ]
-              : [
-                  'These attachments are now a pull request waiting for a maintainer:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'Nothing on the event page changes until a maintainer merges it. To correct a title or a link, edit this issue — the automation will redo the pull request.'
-                ];
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body.join('\n')
+            const created = process.env.PR_OPERATION === 'created';
+            await notify.notifyIssue({
+              github, context, core,
+              kind: created ? 'draft_ready' : 'draft_updated',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: {
+                details: created
+                  ? 'Nothing on the event page changes until it is merged.'
+                  : 'The diff there now shows the new attachments.'
+              }
             });
 
       # The updater exits cleanly for five different reasons; it now says which
@@ -213,21 +234,10 @@ jobs:
           NO_CHANGE_REASON: ${{ steps.update.outputs.reason }}
         with:
           script: |
-            const reason = process.env.NO_CHANGE_REASON;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'Nothing was changed on the event page, so there is no pull request to review.',
-                '',
-                reason
-                  ? '> ' + reason.split('\n').join('\n> ')
-                  : '> Either the event page could not be found, or the attachments already match what was submitted.',
-                '',
-                'Edit this issue if you want the automation to try again.'
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            const reason = process.env.NO_CHANGE_REASON || 'Either the event page could not be found, or the attachments already match what was submitted.';
+            await notify.notifyIssue({ github, context, core, kind: 'no_change', vars: { reason } });
 
       # The steps above can still leave the issue silent if the pull request
       # itself is refused — most often because "Allow GitHub Actions to create
@@ -237,16 +247,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'Something went wrong while turning these attachments into a pull request, so no pull request was opened and the event page is unchanged.',
-                '',
-                'The usual cause is one repository setting: a maintainer should open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });

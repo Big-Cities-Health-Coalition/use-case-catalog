@@ -1,0 +1,69 @@
+# Decides whether a change is content-only, for every check workflow that runs
+# on pull requests (validate, quality, codeql, supply-chain, performance,
+# lint-workflows). Each calls this as its `changes` job and gates its code jobs
+# on the `content_only` output. The rule is scripts/lib/content_only.mjs:
+# every changed file is inside an entry folder (`<entry.path>/<slug>/`, of a
+# type a submission produces) or is `_data/derivatives.json`.
+#
+# A content-only pull request (a submission the bots scaffolded) then runs only
+# the content check, `Content: entries and site build` in validate.yml; the
+# code jobs are skipped with `if:`, and GitHub reports a job skipped that way
+# as passed, so every required context still resolves. A workflow is never
+# path-filtered for this: a workflow that does not start leaves its required
+# contexts waiting for ever.
+#
+# Fails safe: the gated jobs run unless this answers exactly `true`, and they
+# use `!cancelled()` so a failed classification runs them instead of skipping.
+#
+# Pull requests are measured against their base SHA. A dispatched run (the
+# bots re-run checks on their own branches with `gh workflow run`) has no pull
+# request, so it is measured against the default branch.
+name: Content-only change
+
+on:
+  workflow_call:
+    outputs:
+      content_only:
+        description: "'true' when every changed file is entry content, otherwise 'false'"
+        value: ${{ jobs.classify.outputs.content_only }}
+
+permissions: {}
+
+jobs:
+  classify:
+    name: Classify the change
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      content_only: ${{ steps.classify.outputs.content_only }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The merge base with the default branch needs the history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      # Only for js-yaml: the content folder is the schema's `entry.path`.
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      # Any other event (a push to main, the weekly schedule) gets no base,
+      # so the answer is false and everything runs.
+      - name: Classify the changed files
+        id: classify
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || (github.event_name == 'workflow_dispatch' && format('origin/{0}', github.event.repository.default_branch)) || '' }}
+        run: node scripts/content_only.mjs

@@ -1,0 +1,52 @@
+# Hand-authored: the footer's "Report a problem with the site" link opens this
+# form with `?template=site-problem.yml` (config.yml turns blank issues off, so a
+# bare `issues/new` link would not work for the public). It is about the site,
+# not about one entry: entry changes go through edit-entry.yml.
+#
+# No label on purpose. A report is not a submission, so no content workflow
+# runs on it; missing-label.yml acknowledges one from outside the project and
+# labels it `needs-triage`, and a maintainer triages it by hand. Never give it
+# a `content:*` label or an "[...] " title, which missing-label.yml would take
+# for a new-entry form.
+name: "Report a problem with the site"
+description: "Something broken, confusing or hard to use on this site? Tell us in your own words. A maintainer reads every report."
+title: "Site problem: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us. You don't need to know anything about how the site is built: say what happened
+        in plain words. To change what an entry says, use the "Suggest an edit" link on that entry's page instead.
+
+        This issue is public, so anyone can read what you write. Please leave out private details about
+        anyone, such as personal or health information. If you have found a security weakness, don't describe
+        it here: follow the repository's security policy (SECURITY.md) instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "What went wrong?"
+      description: "What were you trying to do, what happened, and what did you expect instead? A screenshot helps: paste or drag it into this box."
+      placeholder: |
+        I typed "permits" into the search box on the home page and nothing happened.
+        I expected a list of matching entries.
+    validations:
+      required: true
+
+  - type: input
+    id: page
+    attributes:
+      label: "Page address"
+      description: "The web address of the page where it happened, if you know it. Leave it blank if the problem is everywhere."
+      placeholder: "https://example.org/catalog/"
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: "Browser and device"
+      description: "Optional. For example: Safari on an iPhone, or Chrome on a Windows laptop."
+      placeholder: "Chrome on a Windows laptop"
+    validations:
+      required: false

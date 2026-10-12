@@ -7,14 +7,20 @@
  *      which is exactly what scripts/new_entry_from_issue.mjs parses back, and
  *   3. YAML front matter, for a maintainer editing the file by hand.
  *
- * GitHub prefills `input`, `textarea` and `dropdown` by id but cannot prefill
- * `checkboxes`; fields marked data-prefill="false" are therefore left out of
- * the URL and called out to the submitter instead.
+ * GitHub prefills only an issue form's text fields (`input`, `textarea`) by
+ * id — never a `dropdown`, `checkboxes` or `upload` — which is why the
+ * generated form asks select, multiselect and boolean questions as text
+ * inputs. Fields marked data-prefill="false" (an `image` question, an `upload`
+ * on GitHub) are left out of the URL and called out to the submitter instead. A field's id, and so its
+ * query parameter, is its key, except for a key GitHub reads as its own
+ * parameter (`body`, `title`, ...): window.PHCTIssueForm.issueFormId, from
+ * assets/js/configurator/issue-form-ids.js, the same helper the generator
+ * names the form's elements with.
  *
  * Exposes: window.SubmitForm.issueUrl, .markdownBody, .yamlFrontMatter,
  *          .mailtoUrl, .unprefillable
  */
-(function (ns) {
+(function (ns, issueFormId) {
   'use strict';
 
   /**
@@ -52,7 +58,7 @@
     params.set('template', form.dataset.template || 'new-entry.yml');
     params.set('title', (form.dataset.titlePrefix || '') + (title || 'New entry'));
     answered(fields).forEach((entry) => {
-      if (entry.field.prefill) params.set(entry.field.key, entry.text);
+      if (entry.field.prefill) params.set(issueFormId(entry.field.key), entry.text);
     });
     return 'https://github.com/' + repo + '/issues/new?' + params.toString();
   };
@@ -156,4 +162,4 @@
       encodeURIComponent(body)
     );
   };
-})((window.SubmitForm = window.SubmitForm || {}));
+})((window.SubmitForm = window.SubmitForm || {}), window.PHCTIssueForm.issueFormId);

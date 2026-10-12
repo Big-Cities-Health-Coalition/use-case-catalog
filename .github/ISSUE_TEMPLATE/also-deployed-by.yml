@@ -49,7 +49,7 @@ body:
     id: email
     attributes:
       label: "Contact email"
-      description: "Optional, and published on the entry page as a mailto link where anyone can see it. Only fill this in if you want to be written to — a shared team address is usually the better answer than a personal one."
+      description: "Optional, and published on the entry page as a mailto link anyone can see. Only fill this in if you want to be written to; a shared team address is usually better than a personal one."
       placeholder: "digital-services@multco.us"
     validations:
       required: false

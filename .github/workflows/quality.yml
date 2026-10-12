@@ -12,6 +12,9 @@
 # and the artifact upload; the `Gate` step at the end turns the recorded
 # outcomes back into the job's exit status. A red run is meant to be diagnosable
 # from the summary table alone.
+#
+# A content-only pull request (a submission; see content-only.yml) skips the
+# audit: it gets only Validate Content's content check.
 name: Quality (a11y + Lighthouse)
 
 on:
@@ -31,7 +34,17 @@ env:
   QUALITY_BASE_URL: http://127.0.0.1:4173
 
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/content-only.yml
+
   audit:
+    needs: changes
+    # Skipped (reported as passed) on a content-only change; see
+    # content-only.yml. `!cancelled()` keeps a failed classification from
+    # skipping it.
+    if: ${{ !cancelled() && needs.changes.outputs.content_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -241,7 +254,7 @@ jobs:
     # instead. `statuses: write` is scoped to this job and nothing else.
     name: Report the dispatched run on its commit
     if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-    needs: [audit]
+    needs: [changes, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -253,7 +266,10 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const passed = ${{ toJSON(needs.audit.result) }} === 'success';
+            const contentOnly = ${{ toJSON(needs.changes.outputs.content_only) }} === 'true';
+            const result = ${{ toJSON(needs.audit.result) }};
+            const skipped = contentOnly && result === 'skipped';
+            const passed = result === 'success' || skipped;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -261,7 +277,9 @@ jobs:
               state: passed ? 'success' : 'failure',
               context: 'Quality (dispatch)',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              description: passed
-                ? 'pa11y-ci and Lighthouse passed'
-                : 'pa11y-ci or Lighthouse reported problems',
+              description: skipped
+                ? 'Skipped: content-only change'
+                : passed
+                  ? 'pa11y-ci and Lighthouse passed'
+                  : 'pa11y-ci or Lighthouse reported problems',
             });

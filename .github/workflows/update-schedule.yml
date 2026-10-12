@@ -44,6 +44,27 @@ jobs:
           # does not need to leave credentials in .git/config.
           persist-credentials: false
 
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Mark the submission received
+        if: github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
 
@@ -135,26 +156,44 @@ jobs:
           STEP_ERROR: ${{ steps.update.outputs.error }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const detail = process.env.STEP_ERROR || 'The step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'This schedule could not be applied yet, so nothing has changed.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix the problem and the automation will try again. If the message above does not tell you what to change, comment here and a maintainer will help.'
-              ].join('\n')
-            });
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason: detail } });
             core.setFailed(detail);
 
-      - name: Create pull request
+      # An edit to the issue re-runs this job, which rebuilds the branch and
+      # force-pushes it. Once a reviewer has committed to it that would erase
+      # their work, so it is only rebuilt while every commit on it is the
+      # automation's. See scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
         if: steps.update.outcome == 'success' && steps.update.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.update.outputs.branch }}
+        run: node scripts/branch_guard.mjs
+
+      - name: Hand the edit to the reviewer
+        if: steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.update.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH });
+
+      - name: Create pull request
+        if: steps.update.outcome == 'success' && steps.update.outputs.changed == 'true' && steps.guard.outputs.held != 'true'
         id: cpr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          # create-pull-request force-pushes over whatever it fetches. That is
+          # safe here only because the branch name carries a timestamp, so it
+          # is new on every run and holds no reviewer's work (see
+          # scripts/branch_guard.mjs). A stable name needs the self-push
+          # pattern new-entry.yml uses.
           # With CONTENT_BOT_TOKEN the pull request has a real author and the
           # normal `pull_request` triggers fire; without it the step below
           # dispatches the checks by hand.
@@ -164,6 +203,8 @@ jobs:
           title: "Update cohort ${{ steps.update.outputs.year }} schedule"
           body: |
             Generated from issue #${{ github.event.issue.number }}.
+
+            Closes #${{ github.event.issue.number }}
 
             ### Updated events
             ${{ steps.update.outputs.summary }}
@@ -205,28 +246,22 @@ jobs:
           COHORT_YEAR: ${{ steps.update.outputs.year }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             // An edited issue updates the existing pull request; say that
             // instead of repeating the full first-time comment.
-            const body = process.env.PR_OPERATION === 'updated'
-              ? [
-                  'Updated the pull request from your edit:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'The diff there now shows the new schedule.'
-                ]
-              : [
-                  `The schedule for ${process.env.COHORT_YEAR} is now a pull request waiting for a maintainer:`,
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'Nothing on the site changes until a maintainer merges it. To correct an event, edit this issue — the automation will redo the pull request.'
-                ];
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body.join('\n')
+            const created = process.env.PR_OPERATION === 'created';
+            await notify.notifyIssue({
+              github, context, core,
+              kind: created ? 'draft_ready' : 'draft_updated',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: {
+                details: created
+                  ? `The draft replaces the ${process.env.COHORT_YEAR} schedule. Nothing on the site changes until it is merged.`
+                  : 'The diff there now shows the new schedule.'
+              }
             });
 
       - name: Comment when nothing changed
@@ -234,12 +269,10 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: 'No schedule changes were detected — the submitted entries already match the stored schedule, so there is nothing to open a pull request for.'
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            const reason = 'The submitted entries already match the stored schedule.';
+            await notify.notifyIssue({ github, context, core, kind: 'no_change', vars: { reason } });
 
       # The steps above can still leave the issue silent if the pull request
       # itself is refused — most often because "Allow GitHub Actions to create
@@ -249,16 +282,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'Something went wrong while turning this schedule into a pull request, so no pull request was opened and the site is unchanged.',
-                '',
-                'The usual cause is one repository setting: a maintainer should open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });

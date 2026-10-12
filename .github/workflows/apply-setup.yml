@@ -17,6 +17,9 @@ name: Apply setup from issue
 # Optional secret CONTENT_BOT_TOKEN behaves exactly as it does in new-entry.yml:
 # with it the pull request has a real author and triggers its own checks;
 # without it this job dispatches them — see "Run the checks on the new branch".
+#
+# Replies on the issue come from scripts/lib/notify.mjs and keep one
+# `status:*` label on it (see new-entry.yml).
 
 on:
   issues:
@@ -71,6 +74,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
 
+      - name: Mark the submission received
+        if: github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
+
       - name: Apply the configuration
         id: apply
         continue-on-error: true
@@ -86,19 +98,11 @@ jobs:
           APPLY_ERROR: ${{ steps.apply.outputs.error }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             const detail = process.env.APPLY_ERROR || 'The apply step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'This configuration could not be applied yet.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix it and the automation will try again. Re-copying the files from the /setup/ review step is usually quicker than editing the YAML by hand.'
-              ].join('\n')
-            });
+            const reason = `${detail}\n\nRe-copying the files from the /setup/ review step is usually quicker than editing the YAML by hand.`;
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason } });
             core.setFailed(detail);
 
       # Keeps the wizard's own defaults and the contact links in step with the
@@ -108,9 +112,31 @@ jobs:
         if: steps.apply.outcome == 'success'
         run: node scripts/generate.mjs
 
+      # An edit to the issue re-runs this job, which rebuilds the branch and
+      # force-pushes it. Once a reviewer has committed to it that would erase
+      # their work, so it is only rebuilt while every commit on it is the
+      # automation's. See scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
+        if: steps.apply.outcome == 'success'
+        env:
+          BRANCH: ${{ steps.apply.outputs.branch }}
+        run: node scripts/branch_guard.mjs
+
+      - name: Hand the edit to the reviewer
+        if: steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.apply.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH });
+
       - name: Commit the configuration on a new branch
         id: commit
-        if: steps.apply.outcome == 'success'
+        if: steps.apply.outcome == 'success' && steps.guard.outputs.held != 'true'
         env:
           BRANCH: ${{ steps.apply.outputs.branch }}
         run: |
@@ -131,6 +157,7 @@ jobs:
           git commit -m "chore: configure site from issue"
           # The branch is machine-generated and named after this issue, so an
           # `issues: edited` re-run replaces its contents rather than merging.
+          # The lease is the remote-tracking ref the guard step just read.
           git push --force-with-lease origin "HEAD:refs/heads/$BRANCH"
           echo "created=true" >> "$GITHUB_OUTPUT"
 
@@ -161,10 +188,13 @@ jobs:
           } > /tmp/pr-body.md
 
           # An `issues: edited` re-run reuses the pull request that already
-          # points at this branch instead of failing.
+          # points at this branch instead of failing. The draft carries the
+          # form's label, like every intake draft, so closing it unmerged tells
+          # the submitter (submission-status.yml); the label exists, because
+          # this job only runs for an issue that has it.
           url="$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || true)"
           if [ -n "$url" ]; then
-            gh pr edit "$BRANCH" --title "$PR_TITLE" --body-file /tmp/pr-body.md
+            gh pr edit "$BRANCH" --title "$PR_TITLE" --body-file /tmp/pr-body.md --add-label content:site-config
             {
               echo "url=$url"
               echo "reused=true"
@@ -174,6 +204,7 @@ jobs:
               --base "${GITHUB_REF_NAME}" \
               --head "$BRANCH" \
               --title "$PR_TITLE" \
+              --label content:site-config \
               --body-file /tmp/pr-body.md)"
             echo "url=$url" >> "$GITHUB_OUTPUT"
           fi
@@ -213,27 +244,20 @@ jobs:
           REUSED: ${{ steps.pr.outputs.reused }}
         with:
           script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             // An edited issue reuses its pull request; say so instead of nothing.
-            const body = process.env.REUSED === 'true'
-              ? [
-                  'Updated the pull request from your edit:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'The diff there now shows the new configuration.'
-                ]
-              : [
-                  'Your configuration is now a pull request:',
-                  '',
-                  process.env.PR_URL,
-                  '',
-                  'Review the diff, then merge to apply it. To change an answer, edit this issue — the automation will redo the pull request.'
-                ];
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body.join('\n')
+            const reused = process.env.REUSED === 'true';
+            await notify.notifyIssue({
+              github, context, core,
+              kind: reused ? 'draft_updated' : 'draft_ready',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              vars: {
+                details: reused
+                  ? 'The diff there now shows the new configuration.'
+                  : 'Review the diff, then merge to apply it.'
+              }
             });
 
       # Everything above can still leave the issue silent: the push or the pull
@@ -245,28 +269,16 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'The configuration was read, but the pull request could not be opened, so nothing has changed on the site.',
-                '',
-                'The usual cause is one repository setting: open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });
 
       - name: Say nothing changed
         if: steps.commit.outputs.created == 'false'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: 'The pasted configuration matches what is already committed, so there is nothing to open a pull request for. The site is already set up this way.'
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            const reason = 'The pasted configuration matches what is already committed. The site is already set up this way.';
+            await notify.notifyIssue({ github, context, core, kind: 'no_change', vars: { reason } });

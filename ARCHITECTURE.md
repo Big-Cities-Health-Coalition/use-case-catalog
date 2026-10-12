@@ -90,6 +90,11 @@ runs Jekyll in Actions (not the legacy Pages builder, which disallows plugins).
   a required-only "short form" toggle); `assets/js/submit.js` orchestrates `submit/{fields,validate,
   repeatable,preview,draft,handoff,review,steps,shortform}.js` and hands off to a prefilled
   `new-entry.yml` issue. Without JavaScript it stays one long page.
+- `status/index.md` — "Check your submission" (module `status`): a number field whose
+  `assets/js/status-page.js` reads the issue from GitHub's public API in the browser and shows its
+  stage, worked out by the pure rules in `assets/js/lib/submission-status.js` from the issue's
+  `status:*` label (or its open/closed state when it has none). Read-only and unauthenticated;
+  when GitHub refuses or JavaScript is off it falls back to a plain link to the issue.
 
 Two Liquid gotchas govern the include style (details in `CLAUDE.md`): assigns inside an include
 leak into the caller, so every include prefixes its variables (`ec_`, `fv_`, `gal_` …); and include
@@ -107,6 +112,7 @@ run identically in tests.
 | `thumbnails.yml` | PR touching `catalog/**` | `scripts/thumbnail_sources.mjs` + `pdftoppm` | commits `thumb.jpg` from `deck.pdf` |
 | `new-event.yml`, `new-year.yml`, `update-schedule.yml`, `update-event-attachments.yml` | issue templates for the events/cohorts modules | matching `scripts/*` | PRs against `_data/` |
 | `refresh-entry.yml` | issue labelled `content:refresh` | `scripts/refresh_entry_from_issue.mjs` | "still accurate" → PR stamping the entry's `verified:` date; "needs updates" → the reported changes are labelled `review:refresh-changes` for the maintainer queue |
+| `edit-request.yml` | issue labelled `content:edit-request` | `scripts/lib/edit_request.mjs` | an acknowledgement with the `/status/` link and `status:received`; no pull request, because a maintainer (or an agent they assign) makes the edit by hand ([docs/edit-requests.md](docs/edit-requests.md)) |
 | `also-deployed-by.yml` | issue labelled `content:also-deployed-by` | `scripts/add_deployment_from_issue.mjs` | PR appending an organization to the entry's `entry.deployments_key` list |
 | `validate.yml` | PR / push | `generate.mjs --check`, `npm test`, `npm run coverage`, `npm run test:ruby`, `npm run validate`, CSS + Jekyll build | the merge gate; coverage evidence is retained as an artifact even when its reviewed floors fail |
 | `performance.yml` | PR / push to main / aggregate dispatch | `performance_fixture.mjs` + `interaction_performance.mjs` | deterministic 0–1,000-entry build/payload evidence plus blocking 100-entry filter/search p95 in low-end-mobile Chrome |

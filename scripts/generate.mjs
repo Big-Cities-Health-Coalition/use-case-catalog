@@ -23,6 +23,7 @@ import * as yaml from 'js-yaml';
 import { renderDefaults, OUTPUT_PATH as DEFAULTS_PATH } from './build_defaults.mjs';
 import { GENERATOR_OUTPUTS } from './lib/generated_paths.mjs';
 import { renderIssueChooser } from '../assets/js/configurator/issue-chooser.js';
+import { checkIssueForms, describeIssueFormProblems } from './lib/issue_forms.mjs';
 
 const ROOT = process.cwd();
 const [SITE_DATA_PATH, generatedDefaultsPath, ISSUE_TEMPLATE_PATH, CONFIG_PATH, CONTACT_LINKS_PATH] =
@@ -120,8 +121,25 @@ for (const { path: where, message } of result.warnings) console.warn(`  ! ${wher
 
 // --- 3. issue form ----------------------------------------------------------
 
+// GitHub hides a form that breaks its limits (a description over 200
+// characters, for one) and its links then open a blank issue. The generator
+// keeps new-entry.yml inside them; this catches what it cannot (a dropdown
+// with no options) and every hand-written form beside it, before anything
+// broken is written.
+
 const fieldCount = (Array.isArray(schema.fields) ? schema.fields : []).filter((f) => f.form !== false).length;
-sync(ISSUE_TEMPLATE_PATH, core.issueTemplateFromSchema(schema, site), `${fieldCount} fields`);
+const issueTemplate = core.issueTemplateFromSchema(schema, site);
+const formProblems = describeIssueFormProblems(
+  checkIssueForms(ROOT, { [ISSUE_TEMPLATE_PATH]: issueTemplate })
+);
+if (formProblems) {
+  abort(
+    `GitHub would reject these issue forms and hide them from the issue chooser:\n\n${formProblems}\n\n` +
+      `Shorten the text named above (for new-entry.yml, the field in _data/schema.yml or the submit intro in\n` +
+      `_data/site.yml) and run \`npm run generate\` again.`
+  );
+}
+sync(ISSUE_TEMPLATE_PATH, issueTemplate, `${fieldCount} fields`);
 
 // --- 4. _config.yml title/description ---------------------------------------
 

@@ -26,6 +26,7 @@ export const resourceLibrary = {
       cohorts: false,
       resources: false,
       governance: false,
+      status: true,
     },
     hero: {
       eyebrow: 'Curated by practitioners',

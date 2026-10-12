@@ -12,7 +12,9 @@
  *
  * DOM contract: [data-review] (the container), [data-form-chrome] (parts of the
  * form hidden while the review is up), [data-review-next] (a <template> holding
- * the long "what happens next" copy, rendered by Liquid).
+ * the long "what happens next" copy, rendered by Liquid), [data-after-submit] (a
+ * <template> with the note on following a sent submission, cloned into the
+ * confirmation panel; absent when the site has no repository).
  *
  * Exposes: window.SubmitForm.renderReview, .renderConfirmation, .exitReview,
  *          .copyText
@@ -125,6 +127,13 @@
     return el('div', { class: 'border-t border-brand-line px-6 py-5' }, [template.content.cloneNode(true)]);
   }
 
+  /** The note on following the submission once it is sent, when the page has one. */
+  function afterSubmit() {
+    const template = document.querySelector('[data-after-submit]');
+    if (!template || !template.content) return null;
+    return el('div', { class: 'border-t border-brand-line px-6 py-4' }, [template.content.cloneNode(true)]);
+  }
+
   /**
    * One answer, read back: the question as it was asked, the answer as it will
    * be sent, and a way back to the control.
@@ -155,10 +164,10 @@
   }
 
   /**
-   * The answers that GitHub's issue form cannot be handed through the URL.
-   * Empty today — every control the generator emits is prefillable — but the
-   * moment a field goes back to `checkboxes` this is the block that stops the
-   * submitter losing the answer without noticing.
+   * The answers that GitHub's issue form cannot be handed through the URL:
+   * an `image` question, which is an `upload` on GitHub (submit/index.md marks
+   * it data-prefill="false"). Every other question is a text field there and
+   * travels; this block stops the submitter losing the rest without noticing.
    * @param {object[]} fields
    * @returns {HTMLElement|null}
    */
@@ -368,6 +377,7 @@
         ]),
       ]),
       el('div', { class: 'flex flex-wrap items-center gap-3 px-6 py-5' }, actions),
+      ...[afterSubmit()].filter(Boolean),
       el('div', { class: 'border-t border-brand-line px-6 py-4' }, [
         el('p', {
           class: 'text-sm text-brand-muted',

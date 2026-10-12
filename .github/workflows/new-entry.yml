@@ -22,6 +22,14 @@ name: New entry from issue
 # a real actor, so `pull_request` workflows trigger natively. Without it the job
 # dispatches them itself — see the "Run the content checks" step and
 # docs/admin-guide.md § One-time repository setup.
+#
+# Every reply to the submitter is built by scripts/lib/notify.mjs (wording a
+# site can override under `notifications:` in _data/site.yml) and keeps one
+# `status:*` label on the issue: received when it opens, in-review once the
+# draft exists. submission-status.yml moves it on from there. An edit to the
+# issue never opens a second draft (see "Find the draft already open") and
+# never rebuilds a draft a reviewer has committed to (see "Check the draft
+# branch").
 
 on:
   issues:
@@ -77,6 +85,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --ignore-scripts
 
+      - name: Mark the submission received
+        if: github.event.action == 'opened'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
+
       - name: Scaffold entry files
         id: scaffold
         continue-on-error: true
@@ -96,18 +113,9 @@ jobs:
         with:
           script: |
             const detail = process.env.SCAFFOLD_ERROR || 'The scaffolding step failed; see the workflow logs for details.';
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'This submission could not be turned into a pull request yet.',
-                '',
-                '> ' + detail.split('\n').join('\n> '),
-                '',
-                'Edit this issue to fix the problem and the automation will try again. If the message above does not tell you what to change, comment here and a maintainer will help.'
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'scaffold_failed', vars: { reason: detail } });
             core.setFailed(detail);
 
       # The scaffolder saves whatever the submitter attached, at whatever size
@@ -121,11 +129,62 @@ jobs:
         continue-on-error: true
         run: node scripts/derive_images.mjs
 
-      - name: Commit the entry on a new branch
-        id: commit
+      # The scaffolder names the branch entry/<slug>-<issue>, and the slug comes
+      # from the title, so an edited title proposes a new name. One issue keeps
+      # one draft: when a draft for this issue is already open, its branch is
+      # the one rebuilt (or held, below), whatever the new name would be. The
+      # rebuild starts from the default branch, so the entry folder follows the
+      # current title (or "### Slug" answer) as it always has, and the old
+      # folder does not linger. See scripts/lib/drafts.mjs.
+      - name: Find the draft already open for this issue
+        id: draft
+        if: steps.scaffold.outcome == 'success'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PROPOSED: ${{ steps.scaffold.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const drafts = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/drafts.mjs`).href);
+            const { branch } = await drafts.findDraftBranch({
+              github, context, core,
+              proposed: process.env.PROPOSED,
+              label: 'content:new-entry',
+              prefix: 'entry/',
+              numbered: true
+            });
+            core.setOutput('branch', branch);
+
+      # An edit to the issue re-runs this job, which rebuilds the branch from
+      # the default branch and force-pushes it. Once a reviewer has committed to
+      # the draft (or pressed "Update branch") that would erase their work, so
+      # the branch is only rebuilt while every commit on it is the automation's.
+      # Reads the refs `fetch-depth: 0` already fetched; see scripts/branch_guard.mjs.
+      - name: Check the draft branch is still the automation's
+        id: guard
         if: steps.scaffold.outcome == 'success'
         env:
-          BRANCH: ${{ steps.scaffold.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
+        run: node scripts/branch_guard.mjs
+
+      # The branch is the reviewer's now: tell them what the submitter changed,
+      # field by field, and tell the submitter their edit reached the reviewer.
+      - name: Hand the edit to the reviewer
+        if: steps.guard.outputs.held == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BRANCH: ${{ steps.draft.outputs.branch }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.holdEdit({ github, context, core, branch: process.env.BRANCH, schema: true });
+
+      - name: Commit the entry on a new branch
+        id: commit
+        if: steps.scaffold.outcome == 'success' && steps.guard.outputs.held != 'true'
+        env:
+          BRANCH: ${{ steps.draft.outputs.branch }}
           SLUG: ${{ steps.scaffold.outputs.slug }}
         run: |
           set -euo pipefail
@@ -144,6 +203,8 @@ jobs:
           git commit -m "feat: add entry $SLUG"
           # The branch is machine-generated and named after this issue, so an
           # `issues: edited` re-run replaces its contents rather than merging.
+          # The lease is the remote-tracking ref the guard step just read: a
+          # reviewer push since then makes this fail instead of being lost.
           git push --force-with-lease origin "HEAD:refs/heads/$BRANCH"
           echo "created=true" >> "$GITHUB_OUTPUT"
 
@@ -152,7 +213,7 @@ jobs:
         if: steps.commit.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ steps.scaffold.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
           ENTRY_DIR: ${{ steps.scaffold.outputs.entry_dir }}
           ENTRY_TITLE: ${{ steps.scaffold.outputs.title }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -202,8 +263,10 @@ jobs:
           # The label is safe to pass unconditionally: this job only runs for an
           # issue that already carries `content:new-entry`, so the label exists.
           # It is what makes generated submissions filterable in the pull
-          # request list, where nothing else distinguishes them.
-          url="$(gh pr view "$BRANCH" --json url --jq .url 2>/dev/null || true)"
+          # request list, where nothing else distinguishes them. `--state open`
+          # matters: a closed pull request for this branch must not be edited
+          # in place of opening the draft (see refresh-entry.yml).
+          url="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
           if [ -n "$url" ]; then
             gh pr edit "$BRANCH" --title "Add entry: $ENTRY_TITLE" --body-file /tmp/pr-body.md \
               --add-label content:new-entry
@@ -235,7 +298,7 @@ jobs:
         if: steps.commit.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ steps.scaffold.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
           ESCALATE: ${{ steps.scaffold.outputs.escalate }}
         run: |
           set -euo pipefail
@@ -275,7 +338,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BOT_TOKEN: ${{ secrets.CONTENT_BOT_TOKEN }}
-          BRANCH: ${{ steps.scaffold.outputs.branch }}
+          BRANCH: ${{ steps.draft.outputs.branch }}
         run: |
           set -euo pipefail
           if [ -n "$BOT_TOKEN" ]; then
@@ -293,6 +356,9 @@ jobs:
             fi
           done
 
+      # The acknowledgement: the submission's number, what happens next, how
+      # long it takes, where to follow it. Also the one mention of the submitter
+      # on the draft, which subscribes them to the review conversation there.
       - name: Link the pull request from the issue
         if: steps.pr.outputs.url != '' && steps.pr.outputs.reused != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -301,29 +367,27 @@ jobs:
           LABELS_FAILED: ${{ steps.labels.outputs.failed }}
         with:
           script: |
-            const body = [
-              'Thanks. Your submission is now a pull request waiting for a maintainer:',
-              '',
-              process.env.PR_URL,
-              '',
-              'Nothing is published until a maintainer merges it. To change an answer, edit this issue — the automation will redo the pull request. To add a screenshot or a PDF, drag it onto this issue and edit it.'
-            ];
+            const details = ['To add a screenshot or a PDF, drag it onto this issue while you edit it.'];
             if (process.env.LABELS_FAILED === 'true') {
-              body.push(
-                '',
+              details.push(
                 'One housekeeping note for the maintainers: the review labels could not be added, which means the repository is missing them. Run **Actions → Bootstrap labels → Run workflow** once and later pull requests will be labelled. This one is fine as it is.'
               );
             }
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body.join('\n')
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({
+              github, context, core,
+              kind: 'draft_ready',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context),
+              vars: { details: details.join('\n\n') }
             });
 
       # An `issues: edited` re-run updates the pull request that already exists.
       # The comment above tells submitters to edit the issue to correct an
-      # answer, so silence here reads as "the edit was ignored".
+      # answer, so silence here reads as "the edit was ignored". The edit is also
+      # the answer to "changes requested", so the status goes back to in-review.
       - name: Say the pull request was updated
         if: steps.pr.outputs.reused == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -331,17 +395,14 @@ jobs:
           PR_URL: ${{ steps.pr.outputs.url }}
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'Updated the pull request from your edit:',
-                '',
-                process.env.PR_URL,
-                '',
-                'It now matches this issue. Edit again any time — a maintainer reviews the pull request, and nothing is published until it is merged.'
-              ].join('\n')
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({
+              github, context, core,
+              kind: 'draft_updated',
+              status: notify.STATUS.inReview,
+              prUrl: process.env.PR_URL,
+              mention: notify.submitter(context)
             });
 
       # Everything above can still leave the issue silent: the push or the
@@ -353,19 +414,9 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { owner, repo } = context.repo;
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: context.issue.number,
-              body: [
-                'Your submission was read, but the pull request could not be opened, so nothing has been lost and nothing has been published.',
-                '',
-                'The usual cause is one repository setting: a maintainer should open **Settings → Actions → General → Workflow permissions** and tick **Allow GitHub Actions to create and approve pull requests**.',
-                '',
-                `Once that is on, edit this issue to retry. The full run is under the [Actions tab](https://github.com/${owner}/${repo}/actions).`
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'pr_failed' });
 
   # With SUBMISSIONS_OPEN set to `false` the job above simply does not run for
   # an outside contributor, and their submission sat there with no reply at all
@@ -379,19 +430,31 @@ jobs:
       && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
     steps:
+      # The default branch, for the message module and the site's wording.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
       - name: Say a maintainer will handle it by hand
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: [
-                'Thanks for this. Submissions are currently closed, so the automation has not turned it into a pull request — a maintainer will review it by hand.',
-                '',
-                'Nothing more is needed from you. Everything you wrote is saved on this issue.'
-              ].join('\n')
-            });
+            const { pathToFileURL } = require('node:url');
+            const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            await notify.notifyIssue({ github, context, core, kind: 'paused', status: notify.STATUS.received, once: true });

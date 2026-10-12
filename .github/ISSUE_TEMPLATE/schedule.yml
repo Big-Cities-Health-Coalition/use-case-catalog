@@ -15,15 +15,17 @@ body:
       placeholder: "2026"
     validations:
       required: true
+  - type: markdown
+    attributes:
+      value: |
+        **Schedule entries:** each entry needs at least `name` and an ISO date (`YYYY-MM-DD`).
+        Optional keys: `id`, `time`, `location`, `description`, `type`, `state`, `icon`.
+        If you omit `id`, one is generated from the name and reported back in a comment.
   - type: textarea
     id: schedule_entries
     attributes:
       label: "Schedule entries (YAML)"
-      description: |
-        **This list replaces the whole schedule for that year — every event you leave out is dropped.** Paste the full schedule, not only what changed.
-        Each entry needs at least `name` and an ISO date (`YYYY-MM-DD`).
-        Optional keys: `id`, `time`, `location`, `description`, `type`, `state`, `icon`.
-        If you omit `id`, one is generated from the name and reported back in a comment.
+      description: "**This list replaces the whole schedule for that year: every event you leave out is dropped.** Paste the full schedule, not only what changed."
       render: yaml
       value: |
         - name: Kickoff

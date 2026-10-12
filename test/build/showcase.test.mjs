@@ -22,6 +22,7 @@ import {
   ROOT,
   buildShowcase,
   keepsLandingLink,
+  landingModules,
   loadPresets,
   normalizeRoot,
   preflight,
@@ -33,6 +34,11 @@ import {
 const presets = await loadPresets();
 
 /* ------------------------------------------------------- the emitted shapes */
+
+test('the landing switches off every module, including one site.yml does not name', () => {
+  assert.deepEqual(landingModules({ events: true }, ['events', 'status']), { events: false, status: false });
+  assert.deepEqual(landingModules(undefined, ['status']), { status: false });
+});
 
 test('normalizeRoot turns a baseurl into the prefix every showcase path is built on', () => {
   assert.equal(normalizeRoot(''), '');
@@ -323,6 +329,12 @@ describe('the showcase', { skip: ready.ok ? false : ready.reason, concurrency: f
       assert.ok(
         !submit.includes(`github.com/${repository}`),
         `${result.id} would file its sample submissions on ${repository}`
+      );
+      // The footer's "Report a problem with the site" link is on every page.
+      const home = fs.readFileSync(path.join(result.siteDir, 'index.html'), 'utf8');
+      assert.ok(
+        !home.includes(`github.com/${repository}/issues/new`),
+        `${result.id} would open an issue on ${repository} from its footer`
       );
     }
   });

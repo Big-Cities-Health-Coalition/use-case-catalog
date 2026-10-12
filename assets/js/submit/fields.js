@@ -206,10 +206,11 @@
 
   /**
    * Render a value the way the GitHub issue form expects to receive it:
-   * one option per line for lists, comma-separated for a multi-select dropdown
-   * (what GitHub itself renders, and what scripts/lib/issue_body.mjs matches
-   * back longest-option-first so labels containing commas survive),
-   * `Label | URL` for links, `URL | alt` for images, "Yes"/"No" for booleans.
+   * one option per line for lists, the exact option text for a select,
+   * comma-separated options for a multiselect (the issue form asks both as text
+   * inputs and says so; scripts/lib/issue_body.mjs matches the text back onto
+   * the options, so labels containing commas survive), `Label | URL` for links,
+   * `URL | alt` for images, and "Yes" for a ticked boolean (nothing otherwise).
    * @param {Field} field
    * @returns {string} '' when the field is unanswered
    */

@@ -42,11 +42,14 @@ Work down this list once, in order. [Repository settings at a glance](#repositor
   - `content:site-config` — triggers `apply-setup.yml` (maintainers only)
   - `content:refresh` — triggers `refresh-entry.yml` (answers to a refresh reminder)
   - `content:also-deployed-by` — triggers `also-deployed-by.yml` (an organization saying they deployed an entry too)
+  - `content:edit-request` — triggers `edit-request.yml`, which only acknowledges the request; you make the edit (see [Edit requests](#edit-requests))
   - `verification` — applied by `verification-sweep.yml` to the refresh issue it keeps per stale entry; nothing triggers on it
   - `review:refresh-changes` — applied by `refresh-entry.yml` when someone reports an entry out of date; nothing triggers on it
+  - `status:received`, `status:in-review`, `status:changes-requested`, `status:published`, `status:declined`: the one status a submission issue is in, kept up to date by the automation and read by the `/status/` page (see [What the submitter is told](#what-the-submitter-is-told)); nothing triggers on them
+  - `needs-triage`: applied by `missing-label.yml` to an issue from outside the project that no submission form claimed, so you can find it
 
   The generated issue forms (`.github/ISSUE_TEMPLATE/*.yml`) already apply these labels when someone opens the issue; you just need the labels to exist in the repo first, or GitHub silently drops them.
-- [ ] **`_data/site.yml` → `github.repository`**: set to this repo's `owner/repo`. Drives the submit form's issue links and every "edit on GitHub" link.
+- [ ] **`_data/site.yml` → `github.repository`**: set to this repo's `owner/repo`. Drives the submit form's issue links, every entry page's "Suggest an edit" link, and the footer's "Report a problem with the site" link.
 - [ ] Configure branding/theme/schema via `/setup/` or `npm run setup` (see the [README](../README.md) quick start and [configuration reference](configuration.md)). With no terminal, paste the wizard's three `_data/*.yml` files into the **Apply setup (creates PR)** issue form and merge the pull request it opens.
 - [ ] Clear the demo content: `npm run eject:samples`, or the **Remove the demo content** checkbox on that same Apply setup issue. Until it is gone every page carries a *Demo content* banner — that is deliberate, and it is the only thing telling a visitor that "Baytown Metro Health District" is fictional. The same step switches the `governance` module off; rewrite `_data/governance.yml` as your own review process and policies, then set `governance: true` again. It also removes the showcase — `_showcase/`, `_data/showcase.yml` and `assets/images/showcase/`, the landing page and example sites the template publishes about itself (see [the showcase](configuration.md#the-showcase)). Your fork never builds those anyway: your home page is your catalog.
 - [ ] Optional: **`CONTENT_BOT_TOKEN`** — a fine-grained personal access token that makes the checks on generated pull requests run without a click. See [Checks on a generated pull request](#checks-on-a-generated-pull-request) below for what it changes and what to grant it.
@@ -68,10 +71,12 @@ The rules you are applying are published on the site's **Governance** page (`/go
 
 1. A submission arrives as a GitHub issue labelled `content:new-entry` (opened via `/submit/` or the issue form directly). The form walks submitters through one section at a time and offers a short form that hides the optional questions, so an entry that arrives with only the required answers is the form working as designed, not a careless submitter — ask for the extras in review if you want them.
 2. The `New entry from issue` workflow (`.github/workflows/new-entry.yml`) runs automatically, scaffolds `catalog/<slug>/index.md` from the issue body, and opens a pull request that closes the issue on merge.
+   - The submitter hears from it straight away: an acknowledgement on the issue with its number, what happens next, the turnaround, and the link to the draft. The submitter is also mentioned once on the draft, which subscribes them to your review comments there.
    - If scaffolding fails (e.g. missing title, duplicate slug), the workflow comments the error back on the issue instead of opening a PR. Editing the issue to fix the problem re-triggers the workflow (it also runs on `issues: edited`).
+   - Once you have committed to the draft branch (or pressed **Update branch**), an edit to the issue no longer rebuilds it, because that would erase your commits. You get a comment on the draft listing which answers changed, before and after, and the submitter is told their edit reached you.
 3. Any images the submitter dropped into the issue are downloaded into the entry folder by the same workflow (see [Screenshots and images](#screenshots-and-images) below), so the pull request already contains the pictures — you review them, you do not have to fetch them.
-4. On the pull request, work through the checklist below. The pull request body already carries a **Maintainer checklist** — the review criteria from `_data/governance.yml` (the same list the governance page shows; a generic five when the site publishes none), the mechanics, and the review-status flip — and, when an answer matched a field's `escalate_on` list in the schema, a **Closer review** block above it naming the field and the answer (the shipped schema flags an unticked PII/PHI attestation, PII/PHI/CJIS under *Data it touches*, and a *Public-facing* audience). Those pull requests also carry the `review:data-governance` label, so you can see from the list which ones are not a five-minute intake.
-5. Set the review status. The scaffold wrote `review_status: "Under review"`; before merging set it to `Reviewed & approved` (the schema names both values: `entry.status_scaffold_value`, `entry.status_approved_value`). If the entry needs changes, leave the pull request open with `review:revisions-requested` and say specifically what to change — the submitter edits the issue or replies on the pull request, and it comes back round.
+4. On the pull request, work through the checklist below. The pull request body already carries a **Maintainer checklist** — the review criteria from `_data/governance.yml` (the same list the governance page shows; a generic five when the site publishes none), the mechanics, and the review-status flip — and, when an answer matched a field's `escalate_on` list in the schema, a **Closer review** block above it naming the field and the answer (the shipped schema flags an unticked PII/PHI attestation, PII/PHI/CJIS under *Data it touches*, and a *Public-facing* audience). Those pull requests also carry the `review:data-governance` label, so you can see from the list which ones are not a five-minute intake. Choice questions (select, multiselect, yes/no) are typed answers on the GitHub form, because GitHub only prefills text fields from `/submit/`'s link. An answer that matches none of the field's options is left out of the front matter and listed under **Answers to fix**, with a box to tick: set the field to the option the submitter meant before merging (see [choice questions on the issue form](content-model.md#choice-questions-on-the-issue-form)). **Validate Content** stays red while a required one is empty.
+5. Set the review status. The scaffold wrote `review_status: "Under review"`; before merging set it to `Reviewed & approved` (the schema names both values: `entry.status_scaffold_value`, `entry.status_approved_value`). If the entry needs changes, leave the pull request open with `review:revisions-requested` (or submit a review that requests changes) and say specifically what to change. The submitter gets an email pointing at your notes and explaining how to update; they edit the issue or reply on the pull request, and it comes back round.
 6. Merge. The `Build & Deploy` workflow runs on every push to `main` and republishes the site, usually within a couple of minutes. Once it has deployed, the automation comments the published URL back on the issue the submission came from ("Your entry is now live at …"), so the submitter hears the outcome without you writing anything. That comment is best-effort: if it does not appear, nothing is wrong with the deploy.
 
 ### Review tiers and labels
@@ -87,13 +92,34 @@ The governance page describes review as tiers with turnaround targets; the pull 
 | `review:revisions-requested` | Whoever reviewed | Sent back with specific changes on the pull request. Swap it for the tier label when the changes land. |
 | `review:declined` | Governance committee | Not published, with a rationale on the pull request; the pull request is closed, the branch may be deleted, and the submitter may appeal to the full committee. |
 
-The labels are a convention the workflow does not enforce; if your process has different tiers, rename them in `bootstrap-labels.yml` — the scaffolder's label step is best-effort and reports, rather than fails, when a label is missing.
+The labels are a convention the workflow does not enforce; if your process has different tiers, rename them in `bootstrap-labels.yml` — the scaffolder's label step is best-effort and reports, rather than fails, when a label is missing. Four of them also tell the submitter something (below), so a renamed `review:revisions-requested`, `review:committee`, `review:partner` or `review:declined` stops those messages until `REVIEW_LABELS` in `scripts/lib/notify.mjs` and the label list in `submission-status.yml` are renamed to match.
+
+### What the submitter is told
+
+Submitters are not subscribed to the draft pull request, but GitHub emails them every comment on their own issue. So the automation reports each step there, and keeps one `status:*` label on the issue for the `/status/` page (a submitter who types the draft pull request's number there is shown the submission its `Closes #N` line names):
+
+| What happens | Comment on the issue | Status |
+|---|---|---|
+| The issue is opened | (the acknowledgement follows with the draft) | `status:received` |
+| The draft pull request is opened or rebuilt | Number, what happens next, turnaround, draft link | `status:in-review` |
+| Scaffolding fails, or the pull request cannot be opened | What went wrong and how to retry | `status:received` |
+| `review:revisions-requested` added, or a review requesting changes by the owner, an organization member or a collaborator | Where your notes are and how to update; once per round | `status:changes-requested` |
+| `review:revisions-requested` removed | None | `status:in-review` |
+| `review:committee` / `review:partner` added | A short "it moved on" note, once | `status:in-review` |
+| `review:declined` added, or the pull request closed unmerged (unless another draft for the issue is still open and `review:declined` is not on the closed one) | Your reason is on the draft, and how to appeal; the issue is closed as not planned | `status:declined` |
+| Merged | "Your entry is now live at …" once the deploy finishes | `status:published` |
+
+Every content form (events, schedules, cohort years, refreshes, "also deployed by", Apply setup) acknowledges the same way. Its draft carries the form's `content:*` label, and of the review rows only the last two apply to it: closed unmerged is a decline (with the same "another draft still open" exception), merged is published. The `review:*` labels and change-requesting reviews only move entry submissions. A draft whose "Closes #N" names an issue from a different form changes nothing. An edit request is acknowledged the same way, but its draft is the pull request you open by hand: label it `content:edit-request` and the same two rows apply ([Edit requests](#edit-requests)). An issue that arrives with no `content:*` label gets an answer too: one that looks like a form submission gets the "label is missing" instructions, and anything else from someone outside the project gets a short acknowledgement and `needs-triage`. Issues opened by owners, members and collaborators that no form claimed are left alone.
+
+The wording is in `scripts/lib/notify.mjs` and can be changed under `notifications:` in `_data/site.yml` ([configuration.md](configuration.md#submitter-notifications)). These messages run on the built-in `GITHUB_TOKEN` and never check out pull request code: `submission-status.yml` runs on `pull_request` (not `pull_request_target`), only for pull requests from a branch of this repository, from a checkout of the default branch.
 
 **Declining.** Rare, and always with a reason the submitter can act on. A comment that has worked:
 
-> Thanks for submitting this. We are not going to publish it as it stands, because *[the specific reason — e.g. the shared material includes patient-level data and the attestation cannot be made honestly; or there is no working link or reachable contact, so a reader could not evaluate it]*. If *[what would change the outcome]*, please reopen by editing the issue and we will take another look. You can also ask for this decision to go to the full Governance Committee by replying here.
+> Thanks for submitting this. We are not going to publish it as it stands, because *[the specific reason — e.g. the shared material includes patient-level data and the attestation cannot be made honestly; or there is no working link or reachable contact, so a reader could not evaluate it]*. If *[what would change the outcome]*, you are welcome to revise it and submit it again through the form. If you disagree with the decision, reply on your submission issue and ask for it to go to the full Governance Committee.
 
-Add `review:declined`, close the pull request without merging, and leave the issue open long enough for the submitter to see the comment — the automation does not comment on a closed pull request.
+Add `review:declined` and close the pull request without merging. The automation then comments on the submitter's issue (which is where their email comes from), pointing at your reason on the pull request and at the appeal route, and closes the issue as not planned. It does this once, whichever of the two you do first. A closed issue is not rebuilt by an edit, so the way back is the one the comment gives: reply on the issue to appeal, or submit again.
+
+Closing a draft *without* `review:declined` while another draft for the same issue is still open (an older duplicate, or one you replaced by hand) is treated as housekeeping: the submitter hears nothing and the open draft carries on. An edit to the issue always updates the draft that is already open, even when the new title would name a different branch.
 
 ### Review checklist
 
@@ -121,7 +147,7 @@ Links
 
 Mechanics
 
-- [ ] The **Validate Content** check is green (`check_front_matter.rb`, `check_file_sizes.rb` and the image-derivatives check).
+- [ ] The **Content: entries and site build** check is green (`check_front_matter.rb`, `check_file_sizes.rb`, the image-derivatives check and the site build). The other checks show as skipped on a submission; see [which checks a submission runs](#which-checks-a-submission-runs).
 - [ ] If a slide deck was promised, it has been uploaded into `catalog/<slug>/` as `deck.pdf`.
 - [ ] The maintainer checklist in the pull request body is complete. (Generated PRs carry their own checklist; `.github/PULL_REQUEST_TEMPLATE.md` is the one hand-opened PRs get.)
 
@@ -141,6 +167,20 @@ The template handles this without a token: after opening the pull request, each 
 3. Add it as a repository secret named `CONTENT_BOT_TOKEN` (Settings → Secrets and variables → Actions → Secrets).
 
 Give it a short expiry and re-issue it on a calendar reminder; the workflows fall back to `GITHUB_TOKEN` and the dispatch path the moment the secret is absent, so an expired token degrades rather than breaks. The token's user becomes the author of every content commit, so use a machine account if you would rather that not be a person's name. [SECURITY.md](../SECURITY.md) covers the trust this delegates.
+
+### Which checks a submission runs
+
+A pull request that changes only entry content runs one check: **Content: entries and site build** (part of **Validate Content**). Entry content means files inside an entry's folder (`catalog/<slug>/`, or your schema's `entry.path`) of the kinds a submission produces: `index.md`, screenshots and their AVIF/WebP versions, PDFs and thumbnails, plus `_data/derivatives.json`. Every pull request the submission, refresh and *also deployed by* workflows open is one of these.
+
+Every other check (lint, unit tests, coverage, the preset builds, Quality, Supply chain, CodeQL, Performance and scale, workflow lint) shows as *skipped* on that pull request. Skipped is not a problem: GitHub counts a skipped check as passed, so it never blocks the merge. A pull request that touches anything else, even one file, runs every check as before, and so does every PHCT update.
+
+A red **Content: entries and site build** is about the entry, never about the code. Open it and read the first failing step:
+
+- **Validate data files, front matter and file sizes**: the entry breaks a rule in the schema. The log names the file and the field, for example a required field that is empty, a choice that is not one of the options, or a file that is too large. Fix the entry in the pull request.
+- **Image derivatives are in sync**: an image is missing its smaller versions. See [Screenshots and images](#screenshots-and-images).
+- **Run Jekyll doctor and build the production site** or **Check built links**: the site does not build, or a link on the new page is broken.
+
+The check runs on every pull request, so it can be made required. Add **Content: entries and site build** to the branch ruleset's required checks: until you do, a red content check is visible but does not stop the merge button.
 
 ### PHCT updates use a separate token
 
@@ -202,14 +242,29 @@ bots.
 
 ## Editing or removing an existing entry
 
-- **Small edit**: every entry page has a **Suggest an edit on GitHub** link (bottom of the page) that opens the file directly in GitHub's editor, pre-targeted at `catalog/<slug>/index.md` on the configured branch. Commit directly or via a PR.
+- **Small edit**: open `catalog/<slug>/index.md` on GitHub and use the pencil icon to edit it, then commit through a pull request. Readers ask for edits through the **Suggest an edit** link on every entry page instead, which opens an [edit request](#edit-requests).
 - **Larger edit / local**: edit `catalog/<slug>/index.md` in a checkout, run `npm run validate` before pushing.
 - **The `updated` date is prepared automatically and still reviewed.** When a push to `main` modifies an entry's `index.md`, the `Build & Deploy` workflow's first job (`stamp`, running `scripts/stamp_updated.mjs`) sets `updated:` to that day — only on files git reports as *modified* (a new entry has `published`), never on `sample: true` content, and never backwards. It opens or updates one small `automation/stamp-entry-updates` pull request instead of pushing to protected `main`. The current reviewed commit deploys immediately; merge the green follow-up PR to publish the date, feed, and "Recently updated" change. Set the field by hand any time you want a different day — the stamp never overrides a date that is already current.
 - **Deprecate (the default for "this is no longer current")**: set the review-status field to its deprecated option — in the shipped schema, `review_status: "Deprecated"` in the entry's front matter. The entry stays published as a record: its page opens with a warning notice, its card says "Deprecated — kept for the record", the home page stops featuring it, and the catalog lists it after every live entry. Nothing is lost for the reader who already built on it, and the next person still finds out what was tried. The schema names the field and the value (`entry.status_key`, `entry.deprecated_value` — see [content-model.md](content-model.md#review-status-and-deprecation)), so a schema without a review status has no deprecated state either.
 - **Remove**: delete the entry's folder (`catalog/<slug>/`) in a PR. Reserve this for the cases deprecation does not cover — a duplicate, a submission that should never have been merged, a contributor who withdraws consent.
   Deleting the folder removes the page but not the git history: if the entry contained protected data, a real person's contact details, or anything published without consent, stop here and follow [incidents.md](incidents.md) instead.
 - **Un-feature / feature**: toggle `featured: true`/`false` in the entry's front matter. `featured` is a reserved key set by automation to `false` on scaffold; there's no UI for it, it's maintainer-only (the schema's `form: false` fields, like `featured` would be if added, are hidden from submission forms by design).
-- Every entry page also has a **Report an issue with this entry** link, which opens a blank pre-titled GitHub issue (not labelled, so it does not trigger automation) — read and triage these manually.
+
+## Edit requests
+
+Every entry page has a **Suggest an edit** link. It opens a short form (`.github/ISSUE_TEMPLATE/edit-entry.yml`) with the entry's slug filled in, where the reader says how they are connected to the entry (they submitted it, they work on it or at the organization behind it, or someone else), describes in plain words what should change, and can leave a name and email for follow-up questions. No GitHub editor, no front matter.
+
+**What arrives**: an issue titled *Edit: &lt;entry title&gt;*, labelled `content:edit-request`. `edit-request.yml` posts one acknowledgement with the issue number and the `/status/` link, saying a maintainer will review it and may get in touch, and marks it `status:received`. When the slug names no entry, the acknowledgement says so and asks for the page address. The wording is `edit_request` and `edit_request_unknown_entry` under `notifications.messages` ([configuration.md](configuration.md#submitter-notifications)).
+
+**What you do**: nothing is applied automatically. Edit the entry file on a branch, open a pull request labelled `content:edit-request` whose body says `Closes #N`, and merge it once you are satisfied. Merging closes the issue and marks it published; closing the pull request unmerged is a decline, with the same comment as any other form. To decline without a pull request, reply with the reason, swap the status label for `status:declined` and close the issue as not planned.
+
+You can also assign the issue to a coding agent (whichever one your organization uses) to draft the pull request. [docs/edit-requests.md](edit-requests.md) is the exact recipe for it, or for a person: change only what was asked, take `select` values only from the schema, never invent facts, validate, and flag anything that needs confirming with the entry's contact. The agent drafts; a person always reviews and merges.
+
+## Site problem reports
+
+The footer of every page has a **Report a problem with the site** link. It opens a short form (`.github/ISSUE_TEMPLATE/site-problem.yml`) that asks what went wrong, and optionally the page address and the browser and device. It is about the site, not about one entry: changes to an entry come in as [edit requests](#edit-requests).
+
+**What arrives**: an issue titled *Site problem: …* with no label, so no content workflow runs on it and it never appears on `/status/`. `missing-label.yml` posts the short acknowledgement to a report from outside the project and labels it `needs-triage`; one opened by an owner, member or collaborator gets nothing. Triage these by hand: fix the problem, reply, or relabel the issue if it turns out to be something else. To link someone straight to the form for a particular page, add `&page=<the page address>` to the link and GitHub fills in the *Page address* box.
 
 ## The monthly verification sweep
 
@@ -253,7 +308,7 @@ The whole diff is one list in one entry's front matter. What to check before you
 - [ ] **The note reads as information, not promotion.** One or two sentences about what they adapted, or would warn the next team about, is the point; a vendor pitch is not.
 - [ ] **The diff is that one list and nothing else.**
 
-Decline by closing the issue with a sentence about why — the submitter gets the notification, and nothing about the entry has changed. Nothing reaches the site until you merge. Setting `SUBMISSIONS_OPEN` to `false` stops outside submissions becoming pull requests at all; the issue gets a comment saying a maintainer will add it by hand.
+Decline by closing the pull request without merging, with a sentence about why on the pull request. The automation then comments on the submitter's issue, pointing at your reason, marks it `status:declined` and closes it as not planned ([What the submitter is told](#what-the-submitter-is-told)), and nothing about the entry has changed. Closing only the issue is not a decline: the pull request stays open, the status stays `status:in-review`, and merging it later would still publish the listing. Nothing reaches the site until you merge. Setting `SUBMISSIONS_OPEN` to `false` stops outside submissions becoming pull requests at all; the issue gets a comment saying a maintainer will add it by hand.
 
 A maintainer can always do it by hand instead — the field is an ordinary [`links` list](content-model.md#links) whose items may carry the optional `email` and `note` keys:
 
@@ -370,7 +425,7 @@ A failure never fails the scaffold. If an image cannot be downloaded it is left 
 
 ## Other attachments and thumbnails
 
-- File-type schema fields (e.g. `deck_pdf`) store a path (`/catalog/<slug>/<filename>`) in front matter. The submission form asks for the file directly (GitHub's `upload` control), and the scaffolder commits it into the entry folder with the rest of the pull request. If the submitter skipped it, the path is still recorded and the file can be added to that folder in the same PR by hand. If the download was refused (the file has to actually be a PDF: the scaffolder checks the bytes, and says so on the pull request when they do not match), the front matter keeps the attachment's URL, and the pull request note names the path to commit the file under instead. A file field may also hold any other `http(s)` URL. A pasted link that is not a GitHub attachment is stored as it is and not downloaded. That is the way to point at a file too big for the repository; see [Large files](#large-files).
+- File-type schema fields (e.g. `deck_pdf`) store a path (`/catalog/<slug>/<filename>`) in front matter. The submission form asks for the file directly (GitHub's `upload` control), and the scaffolder commits it into the entry folder with the rest of the pull request. If the submitter skipped it, the field is left blank; to add the file by hand, commit it to that folder in the same PR and set the field to its path. If the download was refused (the file has to actually be a PDF: the scaffolder checks the bytes, and says so on the pull request when they do not match), the front matter keeps the attachment's URL, and the pull request note names the path to commit the file under instead. A file field may also hold any other `http(s)` URL. A pasted link that is not a GitHub attachment is stored as it is and not downloaded. That is the way to point at a file too big for the repository; see [Large files](#large-files).
 - `links`-type fields (shipped: `resources`) hold `{label, url}` pairs and need no files at all. They are the right home for a shared drive folder, a recorded demo, a model card or a vendor page — anything that does not deserve its own `url` field. Check that each one opens for someone outside the organization before merging.
 - Any `file` field flagged `thumbnail: true` in `_data/schema.yml` (shipped: `deck_pdf` → `deck.pdf`) gets a first-page thumbnail rendered automatically:
   - `thumbnails.yml` (**Generate entry media**) triggers on a PR touching any `*.pdf` file — or any `*.png`, `*.jpg`, `*.jpeg` or `*.webp`, since the same job also writes the responsive derivatives described above (it can't read the schema to narrow the trigger, since GitHub evaluates `paths:` before checkout — the schema-driven filtering happens in the next step instead).

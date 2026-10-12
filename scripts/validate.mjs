@@ -5,9 +5,10 @@
  * 1. Parses every _data/*.yml and _data/cohorts/*.yml file.
  * 2. Checks _data/theme.yml's colours against the contrast pairs the rendered
  *    site actually puts on top of each other.
- * 3. In CI (GITHUB_REPOSITORY set), checks that _data/site.yml and the issue
+ * 3. Checks every .github/ISSUE_TEMPLATE form against GitHub's limits.
+ * 4. In CI (GITHUB_REPOSITORY set), checks that _data/site.yml and the issue
  *    template contact links point at *this* repository, not the template's.
- * 4. Runs scripts/check_front_matter.rb and scripts/check_file_sizes.rb.
+ * 5. Runs scripts/check_front_matter.rb and scripts/check_file_sizes.rb.
  *
  * Deliberately build-free: it must stay runnable without Ruby, Jekyll or a
  * built _site. The checks that need a built tree live in `npm run test:build`.
@@ -20,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import * as yaml from 'js-yaml';
 import { expectedToolchain, parseToolVersions } from './lib/toolchain.mjs';
+import { checkIssueForms } from './lib/issue_forms.mjs';
 
 const ROOT = process.cwd();
 let failed = false;
@@ -91,6 +93,20 @@ if (fs.existsSync(themeFile)) {
       errors.map(describe).join('\n      ')
     );
   }
+}
+
+// --- Issue forms -------------------------------------------------------------
+// GitHub drops a form that breaks its limits from the issue chooser, silently,
+// and every prefilled link to it opens a blank issue instead. A schema field
+// whose help text grew past 200 characters did exactly that to a deployment's
+// submission form, so the PR gate checks every form, generated or hand-written.
+
+for (const { file, problems } of checkIssueForms(ROOT)) {
+  report(
+    problems.length === 0,
+    `${file} is within GitHub's issue-form limits`,
+    problems.map((p) => `${p.path} ${p.message}`).join('\n      ')
+  );
 }
 
 // --- Repository identity (CI only) -----------------------------------------

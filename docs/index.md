@@ -1,6 +1,6 @@
 # Documentation
 
-Twenty-three documents, four different readers. Find your row.
+Twenty-four documents, four different readers. Find your row.
 
 | Page | Who it is for | When to read it |
 |---|---|---|
@@ -9,7 +9,8 @@ Twenty-three documents, four different readers. Find your row.
 | [configuration.md](configuration.md) | Whoever owns `_data/*.yml` | When you want to change a setting and need to know the key, or what a key does. |
 | [content-model.md](content-model.md) | Whoever decides what an entry holds | When the shipped fields are not your fields — designing a schema, adding a field type, choosing a taxonomy people will actually filter by. |
 | [search.md](search.md) | Whoever owns the taxonomy | When search finds the wrong thing, or nothing — synonyms, tag aliases, the facet landing pages and the A–Z directory, all from `_data/search.yml`. |
-| [admin-guide.md](admin-guide.md) | The maintainer of a live site | Day to day: reviewing submissions, editing and removing entries, screenshots, cohorts and events, troubleshooting. |
+| [admin-guide.md](admin-guide.md) | The maintainer of a live site | Day to day: reviewing submissions, editing and removing entries, site problem reports, screenshots, cohorts and events, troubleshooting. |
+| [edit-requests.md](edit-requests.md) | The maintainer, or the coding agent they assign | When a **Suggest an edit** issue (`content:edit-request`) arrives: how to turn it into a pull request that says `Closes #N`, and what a person checks before merging. |
 | [contributor-guide.md](contributor-guide.md) | Someone at a member organization with something to share | Before submitting: what the form asks, what reviewers check hardest, how long review takes, and what happens after an entry is live. Linked from the site's Governance page. |
 | [upgrading.md](upgrading.md) | The maintainer of a fork | When a new template release is out: what is yours, what is the template's, and the merge recipe that keeps the two apart. |
 | [release-readiness-plan.md](release-readiness-plan.md) | PHCT and BCHC release maintainers | The parent audit, remediation, release train, and protected downstream-update plan for preparing the wider BCHC demo and keeping future releases synchronized. |

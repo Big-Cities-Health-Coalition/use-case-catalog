@@ -68,6 +68,17 @@
   .progress-link[data-done="partial"] .progress-dot { @apply border-brand-primary bg-brand-primary/10 text-brand-primary-dark; }
   .progress-count { @apply text-xs font-medium text-brand-muted tabular; }
 
+  /* Submission status (/status/, assets/js/status-page.js): the rail's numbered
+     circles and track as a read-only list. `data-state` is done | current |
+     upcoming, and a visually hidden prefix in each step says the same in words. */
+  .status-step { @apply flex items-start gap-2.5 px-2 py-1.5 text-sm text-brand-muted; }
+  .status-step[data-state="done"] { @apply text-brand-ink; }
+  .status-step[aria-current="step"] { @apply font-semibold text-brand-primary-dark; }
+  .status-step[data-state="current"] .progress-dot { @apply border-brand-primary text-brand-primary-dark ring-2 ring-brand-primary/20; }
+  .status-step[data-state="done"] .progress-dot { @apply border-brand-primary bg-brand-primary text-white; }
+  .status-step[data-state="done"] .progress-num { @apply hidden; }
+  .status-step[data-state="done"] .progress-check { @apply block; }
+
   /* "Check your answers" (assets/js/submit/review.js): each section card
      restates its rail number, and the confirmation panel opens on a check that
      draws itself in — decorative, so both are aria-hidden at the source. */
