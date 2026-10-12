@@ -130,4 +130,4 @@ notifications:
 
 # Optional analytics snippet id (leave blank to disable). Example: Plausible domain.
 analytics:
-  plausible_domain: ""
+  plausible_domain: "big-cities-health-coalition.github.io"

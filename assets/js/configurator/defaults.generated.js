@@ -118,7 +118,7 @@ export const SITE = {
     "logo_alt": "Big Cities Health Coalition"
   },
   "analytics": {
-    "plausible_domain": ""
+    "plausible_domain": "big-cities-health-coalition.github.io"
   }
 };
 
