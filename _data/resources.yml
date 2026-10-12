@@ -1,23 +1,2 @@
 # Curated resource groups for /resources/ (when modules.resources is on).
-- group: "Getting started"
-  description: "Orientation for teams planning a data or digital project, or looking for one to reuse."
-  items:
-    - title: "Project scoping worksheet"
-      url: "https://example.org/scoping-worksheet"
-      type: "Guide"
-      description: "Questions to answer before building, buying or reusing a data system."
-    - title: "Analysis code starter repository"
-      url: "https://github.com/example-org/analysis-starter"
-      type: "Code"
-- group: "Policy & governance"
-  items:
-    - title: "Sample data-sharing agreement"
-      url: "https://example.org/data-sharing-agreement"
-      type: "Template"
-    - title: "Responsible AI use checklist"
-      url: "https://example.org/responsible-ai-checklist"
-      type: "Guide"
-      description: "Questions to answer before piloting a model with resident-facing output."
-    - title: "Procurement questions for technology vendors"
-      url: "https://example.org/procurement"
-      type: "Guide"
+[]

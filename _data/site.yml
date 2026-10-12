@@ -36,7 +36,7 @@ github:
 # `demo_starter_url` (optional) is a copy of the template that has already been
 # through the launch guide — the banner offers it as "what a fresh copy looks
 # like on day one". Only used while `demo` is true; leave blank to omit the link.
-demo: true
+demo: false
 demo_starter_url: ""
 
 # Modules: turn site sections on or off. Navigation, home page blocks and
@@ -55,7 +55,7 @@ modules:
 hero:
   eyebrow: "Big Cities Health Coalition · Data Modernization Workgroup"
   title: "Reuse what other health departments have already built"
-  lead: "Preview sample use cases modeled on common public health needs, from data pipelines and dashboards to analysis code, applications and AI tools. See how member submissions will show what was built, what it took, and what another city can take away."
+  lead: "Browse projects from member health departments, from data pipelines and dashboards to analysis code, applications and AI tools. Each entry shows what was built, what it took, and what another city can take away."
   primary_cta:
     label: "Browse the catalog"
     url: "/catalog/"
@@ -104,7 +104,7 @@ contact:
 
 # Footer
 footer:
-  about: "A demonstration of a shared catalog for the coalition's Data Modernization Workgroup. All current entries are fictional samples; member submissions will be reviewed before publication."
+  about: "A shared catalog for the coalition's Data Modernization Workgroup. Member submissions are reviewed before publication."
   links:
     - label: "Big Cities Health Coalition"
       url: "https://www.bigcitieshealth.org"
