@@ -31,7 +31,7 @@ export const SITE = {
     "repository": "Big-Cities-Health-Coalition/use-case-catalog",
     "branch": "main"
   },
-  "demo": true,
+  "demo": false,
   "demo_starter_url": "",
   "modules": {
     "catalog": true,
@@ -46,7 +46,7 @@ export const SITE = {
   "hero": {
     "eyebrow": "Big Cities Health Coalition · Data Modernization Workgroup",
     "title": "Reuse what other health departments have already built",
-    "lead": "Preview sample use cases modeled on common public health needs, from data pipelines and dashboards to analysis code, applications and AI tools. See how member submissions will show what was built, what it took, and what another city can take away.",
+    "lead": "Browse projects from member health departments, from data pipelines and dashboards to analysis code, applications and AI tools. Each entry shows what was built, what it took, and what another city can take away.",
     "primary_cta": {
       "label": "Browse the catalog",
       "url": "/catalog/",
@@ -90,7 +90,7 @@ export const SITE = {
     "ask_in_open": true
   },
   "footer": {
-    "about": "A demonstration of a shared catalog for the coalition's Data Modernization Workgroup. All current entries are fictional samples; member submissions will be reviewed before publication.",
+    "about": "A shared catalog for the coalition's Data Modernization Workgroup. Member submissions are reviewed before publication.",
     "links": [
       {
         "label": "Big Cities Health Coalition",

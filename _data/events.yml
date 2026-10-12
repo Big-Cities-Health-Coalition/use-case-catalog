@@ -1,29 +1,3 @@
 # Site-wide events shown on /events/ (when modules.events is on) and the home page.
 # Cohort-specific events live in _data/cohorts/<year>.yml.
-- id: community-call-sept
-  name: "Data Modernization Community Call"
-  date: 2026-09-16
-  time: "1:00–2:00 PM ET"
-  location: "Zoom"
-  url: "https://example.org/community-call"
-  type: "Webinar"
-  description: "Monthly open call. Two members demo a catalog entry, then open discussion."
-- id: use-case-submission-deadline
-  name: "Use case submissions for the fall showcase"
-  date: 2026-10-01
-  type: "Deadline"
-  description: "Entries submitted by this date will be featured at the fall member showcase."
-- id: fall-showcase
-  name: "Fall Member Showcase"
-  date: 2026-11-04
-  end_date: 2026-11-05
-  location: "Washington, DC"
-  type: "In person"
-  description: "Two-day convening with lightning talks drawn from the catalog."
-- id: kickoff-webinar
-  name: "Catalog launch webinar"
-  date: 2026-06-10
-  time: "2:00–3:00 PM ET"
-  location: "Zoom"
-  type: "Webinar"
-  description: "Introduced the catalog and walked through how to submit an entry."
+[]
