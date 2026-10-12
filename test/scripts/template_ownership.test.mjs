@@ -68,3 +68,14 @@ test('downstream version metadata remains part of the update boundary', () => {
   values.manifest.ownership.update_metadata = [];
   assert.ok(validateOwnership(values).some((error) => error.includes('.phct-version.json')));
 });
+
+test('optional issue forms stay template-owned so generate can add and remove them after an update', () => {
+  const values = inputs();
+  values.attributes += '\n.github/ISSUE_TEMPLATE/new-year.yml merge=ours\n';
+  values.manifest.ownership.deployment.push('.github/ISSUE_TEMPLATE/new-year.yml');
+  assert.ok(
+    validateOwnership(values).some(
+      (error) => error.includes('.github/ISSUE_TEMPLATE/new-year.yml') && error.includes('PHCT-owned')
+    )
+  );
+});

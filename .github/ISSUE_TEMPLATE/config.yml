@@ -1,5 +1,5 @@
 # Generated from _data/site.yml by scripts/generate.mjs — do not hand-edit.
-# Regenerate with `npm run generate` after changing github.repository, github.branch, or PHCT.
+# Regenerate with `npm run generate` after changing github.repository, github.branch, github.setup_forms, demo, or PHCT.
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability privately

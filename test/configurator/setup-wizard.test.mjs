@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 
 import { defaultConfig } from '../../assets/js/configurator/default-config.js';
+import { OPTIONAL_FORM_SOURCES } from '../../assets/js/configurator/defaults.generated.js';
+import { optionalFormFiles } from '../../assets/js/configurator/issue-chooser.js';
 
 const setupPage = readFileSync(fileURLToPath(new URL('../../setup/index.md', import.meta.url)), 'utf8');
 
@@ -612,6 +614,57 @@ test('the review step renders every file, and the new field is in the schema out
 
   assert.ok($$('#wizard button').some((button) => button.textContent === 'Copy'));
   assert.ok($$('#wizard button').some((button) => button.textContent === 'Download'));
+  assert.deepEqual(errors, []);
+});
+
+test('turning cohorts on lists the cohort forms to create, rendered as generate writes them', () => {
+  goToStep(5);
+  const cohorts = $('#module-cohorts');
+  assert.equal(cohorts.checked, false, 'the shipped site has cohorts off');
+  cohorts.checked = true;
+  cohorts.dispatchEvent(new window.Event('change', { bubbles: true }));
+  goToStep(7);
+  assert.equal($('#step-heading').textContent, 'Review & publish');
+
+  const cards = $$('#wizard section.card').filter((section) =>
+    section.querySelector('.card-title.font-mono')
+  );
+  const newForms = cards.filter((section) => section.querySelector('.eyebrow')?.textContent === 'New file');
+  const expected = optionalFormFiles(
+    { ...shipped.site, modules: { ...shipped.site.modules, cohorts: true } },
+    OPTIONAL_FORM_SOURCES
+  ).write;
+  const cohortPaths = Object.keys(expected).filter((relative) => !relative.endsWith('/apply-setup.yml'));
+  assert.deepEqual(
+    newForms.map((section) => section.querySelector('.card-title').textContent),
+    cohortPaths,
+    'the four cohort forms, after the seven files; Apply setup already exists'
+  );
+  for (const section of newForms) {
+    const relative = section.querySelector('.card-title').textContent;
+    assert.equal(section.querySelector('pre').textContent, expected[relative], `${relative} preview`);
+    const link = [...section.querySelectorAll('a')].find((node) => node.textContent === 'Create on GitHub');
+    assert.ok(link, `${relative} has no Create on GitHub link`);
+    const url = new URL(link.href);
+    assert.equal(url.pathname, '/bigcities/ai-catalog/new/main');
+    assert.equal(url.searchParams.get('filename'), relative);
+    assert.equal(url.searchParams.get('value'), expected[relative], `${relative} prefill`);
+  }
+  assert.match($('#wizard ol').textContent, /add 4 issue forms to GitHub's New issue page/u);
+  const publish = $$('#wizard .card').find((card) =>
+    card.textContent.includes('How to publish these changes')
+  );
+  assert.doesNotMatch(publish.textContent, /npm run|terminal/u, 'the browser path needs no terminal');
+
+  // Back off: nothing to create or delete.
+  goToStep(5);
+  $('#module-cohorts').checked = false;
+  $('#module-cohorts').dispatchEvent(new window.Event('change', { bubbles: true }));
+  goToStep(7);
+  assert.equal(
+    $$('#wizard .eyebrow').filter((node) => ['New file', 'Delete'].includes(node.textContent)).length,
+    0
+  );
   assert.deepEqual(errors, []);
 });
 

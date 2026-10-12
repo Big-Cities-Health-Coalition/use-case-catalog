@@ -23,6 +23,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { answerChanges, formatChanges } from './answer_changes.mjs';
+import { commitsSinceLastDeploy } from './deploy_range.mjs';
 import { draftsForIssue } from './drafts.mjs';
 import {
   INTAKE_LABELS,
@@ -488,14 +489,20 @@ export async function holdEdit({
 }
 
 /**
- * pages.yml's announce job: after a deploy, for each pull request the pushed
- * commit merged that closes an issue, mark the issue published and, when the
- * pull request added an entry, tell the submitter where it is live. Once per
- * issue, however many times the deploy is re-run.
+ * pages.yml's announce job: after a deploy, for each pull request it published
+ * that closes an issue, mark the issue published and, when the pull request
+ * added an entry, tell the submitter where it is live. Once per issue, however
+ * many times the deploy is re-run.
+ *
+ * "Published" means every pull request merged since the last successful
+ * deploy (scripts/lib/deploy_range.mjs), not just this push's: pages.yml
+ * cancels a deploy when a newer push arrives, and the one that finishes
+ * publishes both.
  *
  * An issue is only touched when it already carries a status label or the
  * pull request added an entry page: a maintainer's own pull request that
- * happens to close a bug report is not a submission.
+ * happens to close a bug report is not a submission. A pull request whose
+ * issue cannot be read or updated is a warning; the rest are still told.
  *
  * @param {object} options
  * @param {object} options.github
@@ -507,56 +514,72 @@ export async function holdEdit({
  */
 export async function announcePublished({ github, context, core = quietCore, pageUrl, entryPath }) {
   const { owner, repo } = context.repo;
-  const { data: pulls } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-    owner,
-    repo,
-    commit_sha: context.sha,
-  });
+  const pulls = new Map();
+  for (const commit_sha of await commitsSinceLastDeploy({ github, context, core })) {
+    try {
+      const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+        owner,
+        repo,
+        commit_sha,
+      });
+      for (const pull of data) if (!pulls.has(pull.number)) pulls.set(pull.number, pull);
+    } catch (error) {
+      core.warning(
+        `Could not list the pull requests for ${commit_sha} (${error?.status ?? error?.message}).`
+      );
+    }
+  }
   const escaped = String(entryPath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const filePattern = new RegExp(`^${escaped}/([^/]+)/index\\.md$`);
   const told = [];
   let settings;
 
-  for (const pull of pulls) {
+  for (const pull of pulls.values()) {
     if (!pull.merged_at) continue;
     // The intake workflows write "Closes #N" into the body they generate,
     // so that is where the submitter's issue number lives.
     const issueNumber = linkedIssue(pull.body);
     if (!issueNumber) continue;
-    const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
-    if (issue.pull_request) continue;
-    const labels = labelNames(issue.labels);
+    try {
+      const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
+      if (issue.pull_request) continue;
+      const labels = labelNames(issue.labels);
 
-    let page = '';
-    if (pageUrl) {
-      const files = await github.paginate(github.rest.pulls.listFiles, {
-        owner,
-        repo,
-        pull_number: pull.number,
-        per_page: 100,
+      let page = '';
+      if (pageUrl) {
+        const files = await github.paginate(github.rest.pulls.listFiles, {
+          owner,
+          repo,
+          pull_number: pull.number,
+          per_page: 100,
+        });
+        const added = files
+          .filter((file) => file.status === 'added')
+          .map((file) => filePattern.exec(file.filename))
+          .find(Boolean);
+        if (added) page = `${String(pageUrl).replace(/\/$/, '')}/${entryPath}/${added[1]}/`;
+      }
+      if (!currentStatus(labels) && !page) continue;
+
+      settings ??= page ? await loadSettings({ repository: `${owner}/${repo}`, core }) : undefined;
+      await notifyIssue({
+        github,
+        context,
+        core,
+        issueNumber,
+        kind: page ? 'published' : '',
+        once: true,
+        status: STATUS.published,
+        vars: { page_url: page },
+        settings,
+        labels,
       });
-      const added = files
-        .filter((file) => file.status === 'added')
-        .map((file) => filePattern.exec(file.filename))
-        .find(Boolean);
-      if (added) page = `${String(pageUrl).replace(/\/$/, '')}/${entryPath}/${added[1]}/`;
+      told.push(issueNumber);
+    } catch (error) {
+      core.warning(
+        `Could not announce #${pull.number} on #${issueNumber} (${error?.status ?? error?.message}).`
+      );
     }
-    if (!currentStatus(labels) && !page) continue;
-
-    settings ??= page ? await loadSettings({ repository: `${owner}/${repo}`, core }) : undefined;
-    await notifyIssue({
-      github,
-      context,
-      core,
-      issueNumber,
-      kind: page ? 'published' : '',
-      once: true,
-      status: STATUS.published,
-      vars: { page_url: page },
-      settings,
-      labels,
-    });
-    told.push(issueNumber);
   }
   return told;
 }

@@ -18,6 +18,8 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import * as yaml from 'js-yaml';
 
+import { OPTIONAL_FORM_SOURCE_DIR, readOptionalFormSources } from './lib/optional_issue_forms.mjs';
+
 export const OUTPUT_PATH = 'assets/js/configurator/defaults.generated.js';
 
 const SOURCES = {
@@ -42,26 +44,33 @@ function readIconNames(root) {
 /**
  * Render the defaults module. Pure: takes a repo root, returns file text.
  * @param {string} root repository root
+ * @param {Record<string, string>} [pending] repository-relative path → text to
+ *   read instead of the file on disk, so `npm run setup -- --dry-run` can show
+ *   what the module would become once its files were written
  * @returns {string}
  */
-export function renderDefaults(root) {
-  const parsed = {};
-  for (const [name, relative] of Object.entries(SOURCES)) {
+export function renderDefaults(root, pending = {}) {
+  const readSource = (relative) => {
+    if (typeof pending[relative] === 'string') return pending[relative];
     const file = path.join(root, relative);
     if (!fs.existsSync(file)) throw new Error(`Missing ${relative}.`);
-    parsed[name] = yaml.load(fs.readFileSync(file, 'utf8')) ?? null;
+    return fs.readFileSync(file, 'utf8');
+  };
+
+  const parsed = {};
+  for (const [name, relative] of Object.entries(SOURCES)) {
+    parsed[name] = yaml.load(readSource(relative)) ?? null;
   }
 
-  const configFile = path.join(root, CONFIG_PATH);
-  if (!fs.existsSync(configFile)) throw new Error(`Missing ${CONFIG_PATH}.`);
-  const configText = fs.readFileSync(configFile, 'utf8');
+  const configText = readSource(CONFIG_PATH);
   const configData = yaml.load(configText) ?? {};
 
   const lines = [
     '/**',
     ' * GENERATED FILE — do not edit by hand.',
     ' *',
-    ` * Built from ${Object.values(SOURCES).join(', ')} and ${CONFIG_PATH}`,
+    ` * Built from ${Object.values(SOURCES).join(', ')}, ${CONFIG_PATH}`,
+    ` * and ${OPTIONAL_FORM_SOURCE_DIR}/*.yml`,
     ' * by scripts/build_defaults.mjs (run via `npm run generate`).',
     ' *',
     ' * The browser wizard cannot read the repository at runtime, so the shipped',
@@ -98,6 +107,13 @@ export function renderDefaults(root) {
     '',
     `/** Icon names available to \`icon\` hints, read from ${ICON_INCLUDE_PATH}. */`,
     `export const ICON_NAMES = ${JSON.stringify(readIconNames(root), null, 2)};`,
+    '',
+    `/**`,
+    ` * The optional issue forms' sources, file name → text of ${OPTIONAL_FORM_SOURCE_DIR}/<file>.`,
+    ` * /setup/ renders from these the forms a configuration change adds, byte for`,
+    ` * byte what \`npm run generate\` writes.`,
+    ` */`,
+    `export const OPTIONAL_FORM_SOURCES = ${JSON.stringify(readOptionalFormSources(root), null, 2)};`,
     '',
   ];
 

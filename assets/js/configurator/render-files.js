@@ -6,7 +6,7 @@
 import { toYaml } from './yaml-emit.js';
 import { navigationFromSite } from './answers.js';
 import { issueTemplateFromSchema } from './issue-template.js';
-import { renderIssueChooser } from './issue-chooser.js';
+import { renderIssueChooser, setupFormsEnabled } from './issue-chooser.js';
 import { jekyllConfig } from './jekyll-config.js';
 
 const REGEN_NOTE = 'Regenerate this file with `npm run setup` or the /setup/ page on the deployed site.';
@@ -82,7 +82,10 @@ export function renderFiles(config, options = {}) {
     '.github/ISSUE_TEMPLATE/new-entry.yml': issueTemplateFromSchema(schema, site),
     '.github/ISSUE_TEMPLATE/config.yml': renderIssueChooser(
       site.github?.repository ?? '',
-      site.github?.branch
+      site.github?.branch,
+      {
+        setup: setupFormsEnabled(site),
+      }
     ),
   };
 }

@@ -50,7 +50,12 @@ const httpError = (status) => Object.assign(new Error(`HTTP ${status}`), { statu
 /**
  * An in-memory repository behind the slice of Octokit the module uses.
  * @param {{issues?: Record<number, object>, labels?: string[], pulls?: object[],
- *   files?: Record<number, object[]>, associated?: object[]}} [seed]
+ *   files?: Record<number, object[]>, associated?: object[]|Record<string, object[]>,
+ *   runs?: object[], compare?: Record<string, object>, fail?: string[]}} [seed]
+ *   `associated`: one list for every commit, or a list per commit SHA.
+ *   `runs`: what listing the deploy workflow's successful runs returns.
+ *   `compare`: compareCommits results by "base...head". `fail`: methods
+ *   ("actions.listWorkflowRuns") that answer with a 500.
  */
 function fakeGitHub(seed = {}) {
   const issues = structuredClone(seed.issues ?? {});
@@ -64,6 +69,9 @@ function fakeGitHub(seed = {}) {
   const find = (number) => {
     if (!issues[number]) throw httpError(404);
     return issues[number];
+  };
+  const failing = (name) => {
+    if ((seed.fail ?? []).includes(name)) throw httpError(500);
   };
   const rest = {
     issues: {
@@ -118,8 +126,29 @@ function fakeGitHub(seed = {}) {
       },
       listFiles: async ({ pull_number }) => ({ data: seed.files?.[pull_number] ?? [] }),
     },
+    actions: {
+      getWorkflowRun: async ({ run_id }) => {
+        failing('actions.getWorkflowRun');
+        return { data: { id: run_id, workflow_id: 7, head_branch: 'main' } };
+      },
+      listWorkflowRuns: async (params) => {
+        failing('actions.listWorkflowRuns');
+        calls.push(['listWorkflowRuns', params]);
+        return { data: { total_count: (seed.runs ?? []).length, workflow_runs: seed.runs ?? [] } };
+      },
+    },
     repos: {
-      listPullRequestsAssociatedWithCommit: async () => ({ data: seed.associated ?? [] }),
+      compareCommits: async ({ base, head }) => {
+        failing('repos.compareCommits');
+        const found = seed.compare?.[`${base}...${head}`];
+        if (!found) throw httpError(404);
+        return { data: found };
+      },
+      listPullRequestsAssociatedWithCommit: async ({ commit_sha }) => {
+        calls.push(['associated', commit_sha]);
+        const associated = seed.associated ?? [];
+        return { data: Array.isArray(associated) ? associated : (associated[commit_sha] ?? []) };
+      },
       getCollaboratorPermissionLevel: async ({ username }) => {
         if (!Object.hasOwn(seed.roles ?? {}, username)) throw httpError(403);
         return { data: { role_name: seed.roles[username] } };
@@ -478,6 +507,177 @@ test('announcePublished: the entry page, once, and only for submissions', async 
     entryPath: 'catalog',
   });
   assert.equal(github.commentsOn(41).length, 1, 'a re-run deploy does not announce twice');
+});
+
+// pages.yml cancels an in-progress deploy when a newer push arrives, so when
+// two pull requests merge back to back only the second deploy finishes. The
+// announcement has to cover everything published since the last successful
+// deploy, not just the commit this run was started for.
+const PAGE = 'https://acme.github.io/catalog/';
+const entryPull = (number, issue, slug) => ({
+  number,
+  body: `Closes #${issue}`,
+  merged_at: '2026-10-12T15:00:00Z',
+  slug,
+});
+/**
+ * Main at z0 (last successful deploy) -> a1 (#82, entry for #41, its deploy
+ * cancelled) -> b2 (a merge commit for #60, entry for #44, whose branch commit
+ * f1 sits off the main line) -> c3 (#121, a config change closing nothing).
+ */
+function cancelledDeploySeed(overrides = {}) {
+  const pulls = [entryPull(82, 41, 'water-routing'), entryPull(60, 44, 'bed-forecast')];
+  return {
+    issues: {
+      41: { labels: [ENTRY_LABEL, STATUS.published] },
+      44: { labels: [ENTRY_LABEL, STATUS.inReview] },
+    },
+    runs: [
+      { id: 1000, head_sha: 'c3' },
+      { id: 900, head_sha: 'z0' },
+    ],
+    compare: {
+      'z0...c3': {
+        status: 'ahead',
+        ahead_by: 4,
+        commits: [
+          { sha: 'a1', parents: [{ sha: 'z0' }] },
+          { sha: 'f1', parents: [{ sha: 'a1' }] },
+          { sha: 'b2', parents: [{ sha: 'a1' }, { sha: 'f1' }] },
+          { sha: 'c3', parents: [{ sha: 'b2' }] },
+        ],
+      },
+    },
+    associated: {
+      a1: [pulls[0]],
+      f1: [pulls[1]],
+      b2: [pulls[1]],
+      c3: [{ number: 121, body: 'Tidy the site settings', merged_at: '2026-10-12T15:01:00Z' }],
+    },
+    files: Object.fromEntries(
+      pulls.map((pull) => [pull.number, [{ filename: `catalog/${pull.slug}/index.md`, status: 'added' }]])
+    ),
+    ...overrides,
+  };
+}
+const deployContext = () => context({ sha: 'c3', runId: 1000 });
+const announce = (github, core) =>
+  announcePublished({ github, context: deployContext(), core, pageUrl: PAGE, entryPath: 'catalog' });
+
+test('announcePublished: a deploy cancelled by a newer merge is announced by the one that published it', async () => {
+  const github = fakeGitHub(cancelledDeploySeed());
+  const core = logs();
+  assert.deepEqual(await announce(github, core), [41, 44]);
+  assert.deepEqual(
+    core.lines.filter(([level]) => level === 'warning'),
+    [],
+    'nothing went wrong'
+  );
+
+  const [listed] = github.calls.filter((call) => call[0] === 'listWorkflowRuns');
+  assert.deepEqual(
+    { ...listed[1], owner: undefined, repo: undefined },
+    {
+      owner: undefined,
+      repo: undefined,
+      workflow_id: 7,
+      branch: 'main',
+      event: 'push',
+      status: 'success',
+      exclude_pull_requests: true,
+      per_page: 10,
+    }
+  );
+  assert.deepEqual(
+    github.calls.filter((call) => call[0] === 'associated').map((call) => call[1]),
+    ['a1', 'b2', 'c3'],
+    'only the main line is looked up, oldest first; a merged branch commit is not'
+  );
+
+  // Each submitter is told where their own entry is.
+  assert.equal(github.commentsOn(41).length, 1);
+  assert.match(
+    github.commentsOn(41)[0],
+    /now live at https:\/\/acme\.github\.io\/catalog\/catalog\/water-routing\//
+  );
+  assert.equal(github.commentsOn(44).length, 1);
+  assert.match(
+    github.commentsOn(44)[0],
+    /now live at https:\/\/acme\.github\.io\/catalog\/catalog\/bed-forecast\//
+  );
+  assert.deepEqual(github.labelsOf(41), [ENTRY_LABEL, STATUS.published]);
+  assert.deepEqual(github.labelsOf(44), [ENTRY_LABEL, STATUS.published]);
+
+  // A re-run of the same deploy, or a later one whose range overlaps, finds
+  // the markers and says nothing twice.
+  assert.deepEqual(await announce(github, logs()), [41, 44]);
+  assert.equal(github.commentsOn(41).length, 1, 'a re-run does not announce #41 twice');
+  assert.equal(github.commentsOn(44).length, 1, 'a re-run does not announce #44 twice');
+});
+
+test('announcePublished: with no earlier successful deploy, only this push is announced', async () => {
+  for (const runs of [[], [{ id: 1000, head_sha: 'c3' }]]) {
+    const github = fakeGitHub(
+      cancelledDeploySeed({
+        runs,
+        associated: { a1: [entryPull(82, 41, 'water-routing')], c3: [entryPull(60, 44, 'bed-forecast')] },
+      })
+    );
+    const core = logs();
+    assert.deepEqual(await announce(github, core), [44]);
+    assert.deepEqual(
+      github.calls.filter((call) => call[0] === 'associated').map((call) => call[1]),
+      ['c3']
+    );
+    assert.equal(github.commentsOn(41).length, 0);
+    assert.ok(
+      core.lines.some(([level, line]) => level === 'info' && /no earlier successful deploy/i.test(line)),
+      'the log says why only this push was looked at'
+    );
+    assert.deepEqual(
+      core.lines.filter(([level]) => level === 'warning'),
+      []
+    );
+  }
+});
+
+test('announcePublished: when the range cannot be read, it warns and announces this push alone', async () => {
+  const onlyThisPush = { a1: [entryPull(82, 41, 'water-routing')], c3: [entryPull(60, 44, 'bed-forecast')] };
+  const cases = [
+    ['actions.getWorkflowRun fails', { fail: ['actions.getWorkflowRun'] }, 'warning'],
+    ['actions.listWorkflowRuns fails', { fail: ['actions.listWorkflowRuns'] }, 'warning'],
+    ['repos.compareCommits fails', { fail: ['repos.compareCommits'] }, 'warning'],
+    [
+      'the range is too long',
+      { compare: { 'z0...c3': { status: 'ahead', ahead_by: 101, commits: [] } } },
+      'info',
+    ],
+    [
+      'main was rewritten',
+      { compare: { 'z0...c3': { status: 'diverged', ahead_by: 2, commits: [] } } },
+      'info',
+    ],
+  ];
+  for (const [label, overrides, level] of cases) {
+    const github = fakeGitHub(cancelledDeploySeed({ associated: onlyThisPush, ...overrides }));
+    const core = logs();
+    assert.deepEqual(await announce(github, core), [44], label);
+    assert.equal(github.commentsOn(44).length, 1, label);
+    assert.ok(
+      core.lines.some(([lvl, line]) => lvl === level && /only this push/i.test(line)),
+      `${label}: logged as ${level}`
+    );
+  }
+});
+
+test('announcePublished: one submission that cannot be read does not cost the others theirs', async () => {
+  const seed = cancelledDeploySeed();
+  delete seed.issues[41]; // a deleted or transferred issue reads as a 404
+  const github = fakeGitHub(seed);
+  const core = logs();
+  assert.deepEqual(await announce(github, core), [44]);
+  assert.equal(github.commentsOn(44).length, 1);
+  assert.ok(core.lines.some(([level, line]) => level === 'warning' && /#82/.test(line) && /#41/.test(line)));
 });
 
 /**

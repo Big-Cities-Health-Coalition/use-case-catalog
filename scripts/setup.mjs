@@ -7,7 +7,10 @@
  *   npm run setup -- --dry-run
  *
  * Asks a handful of questions, then writes _data/site.yml, _data/theme.yml,
- * _data/schema.yml, _data/navigation.yml, _config.yml and both GitHub issue-routing files.
+ * _data/schema.yml, _data/navigation.yml, _config.yml and both GitHub issue-routing files,
+ * then runs `npm run generate` for everything derived from them (the issue forms
+ * the module toggles switch on, the wizard defaults), as the Apply setup
+ * workflow does after it writes the same files.
  * The same answers -> files logic runs in the browser at /setup/; everything
  * lives in assets/js/configurator/core.js.
  *
@@ -19,17 +22,27 @@
  * Flags:
  *   --preset <id>   start from a preset instead of asking
  *   --yes           accept every default, ask nothing (CI / smoke tests)
- *   --dry-run       print the file list and a diff summary, write nothing
+ *   --dry-run       print the file list and a diff summary, and what
+ *                   `npm run generate` would then add, change or delete;
+ *                   write nothing
  *   --out <dir>     write into <dir> instead of the repository (implies --yes);
  *                   nothing in the working tree is touched
  */
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-import { ejectSamples, ejectSummary } from './eject_samples.mjs';
+import {
+  EXAMPLE_MODULES,
+  ejectSamples,
+  ejectSummary,
+  siteYamlWithModuleOff,
+  siteYamlWithoutDemo,
+} from './eject_samples.mjs';
+import { planGenerate, pointRepositoryLinks } from './lib/generate_plan.mjs';
 import { helpText, parseArgs } from './lib/setup-args.mjs';
 import {
   bold,
@@ -120,12 +133,66 @@ async function main() {
       files['_config.yml'] = core.patchJekyllConfig(fs.readFileSync(configFile, 'utf8'), config.site).text;
     }
 
+    // Step 7 runs `npm run generate` on what this writes into the repository.
+    // Its first job, pointing the footer's links into GitHub at this
+    // repository, is done here so the summary shows the site.yml that lands;
+    // the rest of what it will do is listed under the files. `--out` never
+    // reaches step 7.
+    if (!args.out) {
+      files['_data/site.yml'] = pointRepositoryLinks(files['_data/site.yml'], config.site.github?.repository);
+    }
+
+    // --- 3b. demo content ---------------------------------------------------
+    // The shipped sample entries were written for the previous entry model. If
+    // the schema changed, they will fail validation, so offer to remove them —
+    // along with the rest of the demo content and the banner that announces it.
+    // Asked before the summary so the plan below, dry run included, reflects
+    // the answer: removal turns `demo` off, which drops the Apply setup form
+    // and the chooser's Launch checklist link.
+    const previousSchema = readSchema(ROOT);
+    let removeDemo = false;
+    let offerDemoRemoval = false;
+    if (!args.out) {
+      const schemaChanged =
+        JSON.stringify(schemaFieldKeys(previousSchema)) !==
+        JSON.stringify(config.schema.fields.map((field) => field.key));
+      const sampleEntries = listSampleEntries(ROOT, entryPathFrom(previousSchema));
+      offerDemoRemoval = sampleEntries.length > 0 && (schemaChanged || preset.id !== 'current');
+      if (offerDemoRemoval) {
+        const count = `${sampleEntries.length} sample ${sampleEntries.length === 1 ? 'entry' : 'entries'}`;
+        removeDemo = await asker.confirm(
+          `Remove the demo content — ${count} under ${entryPathFrom(previousSchema)}/, the sample events, cohort and resources — and switch the governance page off until you have rewritten it?`,
+          schemaChanged
+        );
+      }
+    }
+
+    // What generate will see after step 6 has run.
+    let planned = files;
+    if (removeDemo) {
+      // Each helper returns null when there is nothing to switch off.
+      let site = files['_data/site.yml'];
+      site = siteYamlWithoutDemo(site) ?? site;
+      for (const name of EXAMPLE_MODULES) site = siteYamlWithModuleOff(site, name) ?? site;
+      planned = { ...files, '_data/site.yml': site };
+    }
+    const derived = args.out ? null : planGenerate(ROOT, planned);
+
     // --- 4. summary ---------------------------------------------------------
     console.log(bold('\nFiles to write:\n'));
     for (const [relative, content] of Object.entries(files)) {
       console.log(
         `  ${relative.padEnd(42)} ${args.out ? green('new file') : diffSummary(ROOT, relative, content)}`
       );
+    }
+    if (derived && Object.keys(derived.write).length + Object.keys(derived.remove).length > 0) {
+      console.log(bold('\nThen `npm run generate` will change:\n'));
+      for (const [relative, content] of Object.entries(derived.write)) {
+        console.log(`  ${relative.padEnd(42)} ${diffSummary(ROOT, relative, content)}`);
+      }
+      for (const [relative, when] of Object.entries(derived.remove)) {
+        console.log(`  ${relative.padEnd(42)} ${red('delete')} ${dim(`(${when} is off)`)}`);
+      }
     }
     console.log('');
     console.log(`  Site        ${bold(config.site.name)}`);
@@ -157,7 +224,6 @@ async function main() {
     }
 
     // --- 5. write -----------------------------------------------------------
-    const previousSchema = readSchema(ROOT);
     writeFiles(target, files);
 
     // Writing elsewhere never touches the working tree, so stop here.
@@ -167,27 +233,28 @@ async function main() {
     }
 
     // --- 6. demo content ----------------------------------------------------
-    // The shipped sample entries were written for the previous entry model. If
-    // the schema changed, they will fail validation, so offer to remove them —
-    // along with the rest of the demo content and the banner that announces it.
-    const schemaChanged =
-      JSON.stringify(schemaFieldKeys(previousSchema)) !==
-      JSON.stringify(config.schema.fields.map((field) => field.key));
-    const sampleEntries = listSampleEntries(ROOT, entryPathFrom(previousSchema));
-    if (sampleEntries.length && (schemaChanged || preset.id !== 'current')) {
-      const count = `${sampleEntries.length} sample ${sampleEntries.length === 1 ? 'entry' : 'entries'}`;
-      const remove = await asker.confirm(
-        `Remove the demo content — ${count} under ${entryPathFrom(previousSchema)}/, the sample events, cohort and resources — and switch the governance page off until you have rewritten it?`,
-        schemaChanged
-      );
-      if (remove) {
-        for (const line of ejectSummary(ejectSamples(ROOT))) console.log(dim(`  ${line}`));
-      } else {
-        console.log(dim('  Kept. Run `npm run eject:samples` when you are ready to clear it.'));
-      }
+    if (removeDemo) {
+      for (const line of ejectSummary(ejectSamples(ROOT))) console.log(dim(`  ${line}`));
+    } else if (offerDemoRemoval) {
+      console.log(dim('  Kept. Run `npm run eject:samples` when you are ready to clear it.'));
     }
 
-    // --- 7. next steps ------------------------------------------------------
+    // --- 7. derived files ---------------------------------------------------
+    // After step 6, which may just have turned `demo` off: that drops the
+    // Apply setup form and the chooser's Launch checklist link.
+    console.log('');
+    const generated = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'generate.mjs')], {
+      cwd: ROOT,
+      stdio: 'inherit',
+    });
+    if (generated.status !== 0) {
+      console.error(
+        red('\n`npm run generate` stopped on the problem above. Fix it and run it again before committing.\n')
+      );
+      return 1;
+    }
+
+    // --- 8. next steps ------------------------------------------------------
     console.log(green(bold('\nDone.')) + ' Next steps:\n');
     console.log(`  1. Review the changes:      ${cyan('git diff')}`);
     console.log(

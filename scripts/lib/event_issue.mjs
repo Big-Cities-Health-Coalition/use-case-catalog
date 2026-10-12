@@ -9,8 +9,8 @@
  * through `parseIssueForm` (first occurrence wins, only known headings start a
  * section, everything after the trailing free-text field is prose).
  *
- * The labels below are the ones the generated forms in .github/ISSUE_TEMPLATE/
- * emit. Every form's labels are known to every script: a heading has to be
+ * The labels below are the ones the cohort forms in scripts/issue-forms/ emit
+ * (copied into .github/ISSUE_TEMPLATE/ while the cohorts module is on). Every form's labels are known to every script: a heading has to be
  * recognised to end the previous section, otherwise an unrelated field would be
  * swallowed into the answer above it.
  *

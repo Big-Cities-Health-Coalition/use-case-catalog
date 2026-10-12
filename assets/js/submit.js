@@ -33,6 +33,22 @@
     box.hidden = message === '';
   }
 
+  /**
+   * Count a hand-off in Plausible, when the site has analytics on
+   * (`analytics.plausible_domain`; _includes/head.html then defines
+   * window.plausible). Only the event name is sent — never an answer. The
+   * call can neither throw nor hold up the hand-off: no Plausible, or one that
+   * misbehaves, just means one uncounted event.
+   * @param {string} name
+   */
+  function countEvent(name) {
+    try {
+      if (typeof window.plausible === 'function') window.plausible(name);
+    } catch {
+      // Analytics is never worth an error between the submitter and GitHub.
+    }
+  }
+
   /** Screen-reader suffix for each section state. */
   const PROGRESS_LABELS = { complete: ' — complete', partial: ' — in progress', empty: ' — not started' };
 
@@ -371,6 +387,9 @@
         );
         return;
       }
+      // Counted only once the tab is open: a blocked pop-up or a too-long
+      // link has not reached GitHub, and validation never gets this far.
+      countEvent('Send to GitHub');
       say(status, '');
       ns.renderConfirmation(form, fields, {
         url: url,

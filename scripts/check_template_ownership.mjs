@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 import * as yaml from 'js-yaml';
 
+import { OPTIONAL_ISSUE_FORMS } from '../assets/js/configurator/issue-chooser.js';
 import { DERIVED_OUTPUTS, GENERATOR_OUTPUTS } from './lib/generated_paths.mjs';
+import { optionalFormPath, optionalFormSource } from './lib/optional_issue_forms.mjs';
 import { forkOwnershipRules, isForkOwned, matchesPattern } from './upgrade_check.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -123,6 +125,17 @@ export function validateOwnership({ manifest, lock, attributes, packageJson }) {
   for (const output of generated) {
     if (!DERIVED_OUTPUTS.includes(output))
       errors.push(`${output} is marked generated but generate.mjs does not derive it.`);
+  }
+
+  // generate.mjs writes and deletes these from template sources after every
+  // update, so neither side may be deployment-owned: a protected copy would
+  // fail the after-update checksum the moment generate removed it.
+  for (const form of OPTIONAL_ISSUE_FORMS) {
+    for (const file of [optionalFormPath(form.file), optionalFormSource(form.file)]) {
+      if (isForkOwned(rules, file)) {
+        errors.push(`${file} is an optional issue form generate.mjs manages; it must stay PHCT-owned.`);
+      }
+    }
   }
 
   for (const exception of exceptions) {

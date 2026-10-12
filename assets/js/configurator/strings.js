@@ -61,15 +61,25 @@ export function githubNewFileUrl(repository, branch, path, content) {
   return `https://github.com/${repo}/new/${encodeURIComponent(ref)}?${params.toString()}`;
 }
 
-/** "Edit this file" URL. GitHub cannot prefill the editor for existing files. */
-export function githubEditFileUrl(repository, branch, path) {
+/** github.com/<repo>/<action>/<branch>/<path>, or '' without a repository. */
+function githubFileUrl(action, repository, branch, path) {
   const repo = String(repository ?? '').trim();
   if (!repo) return '';
   const ref = String(branch ?? 'main').trim() || 'main';
-  return `https://github.com/${repo}/edit/${encodeURIComponent(ref)}/${String(path ?? '')
+  return `https://github.com/${repo}/${action}/${encodeURIComponent(ref)}/${String(path ?? '')
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')}`;
+}
+
+/** "Edit this file" URL. GitHub cannot prefill the editor for existing files. */
+export function githubEditFileUrl(repository, branch, path) {
+  return githubFileUrl('edit', repository, branch, path);
+}
+
+/** "Delete this file" URL: GitHub's commit page for removing one file. */
+export function githubDeleteFileUrl(repository, branch, path) {
+  return githubFileUrl('delete', repository, branch, path);
 }
 
 /**
