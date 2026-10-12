@@ -8,6 +8,19 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.8] — 2026-10-12
+
+Eighth candidate. rc.7's live BCHC update passed and deployed. This candidate
+fixes a test that failed on a deployment that had removed its sample content
+(#105), so BCHC can purge its samples before launch.
+
+### Fixed
+
+- A deployment that had removed its sample entries, left demo mode or turned
+  cohorts on failed `npm run verify`: the `npm run setup --dry-run` test relied
+  on the repository's own data. It now sets up its own demo site with one
+  sample entry.
+
 ## [1.11.0-rc.7] — 2026-10-12
 
 Seventh candidate. rc.6 failed closed in BCHC on a build test that assumed the
@@ -1648,7 +1661,8 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.7...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.8...HEAD
+[1.11.0-rc.8]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.7...v1.11.0-rc.8
 [1.11.0-rc.7]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.6...v1.11.0-rc.7
 [1.11.0-rc.6]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...v1.11.0-rc.6
 [1.11.0-rc.5]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.4...v1.11.0-rc.5

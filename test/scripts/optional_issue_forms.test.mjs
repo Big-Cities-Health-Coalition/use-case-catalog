@@ -445,11 +445,21 @@ const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 test('npm run setup --dry-run lists the issue forms generate would add and remove, and writes nothing', (t) => {
   const root = scratchRepository(t);
-  // The shipped sample entries, so setup offers to remove the demo content.
-  fs.cpSync(path.join(ROOT, 'catalog'), path.join(root, 'catalog'), { recursive: true });
+  // Its own starting point, not this repository's data (a deployment may have
+  // cohorts on, or have already removed its samples and left demo mode): a
+  // demo site with cohorts off and one sample entry, so setup offers to remove
+  // the demo content and Apply setup exists to be retired.
+  configure(root, { cohorts: false, demo: true });
+  generateOk(root);
+  const entryPath = jsYaml.load(read(root, '_data/schema.yml')).entry?.path || 'catalog';
+  fs.mkdirSync(path.join(root, entryPath, 'fixture-sample'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, entryPath, 'fixture-sample', 'index.md'),
+    '---\ntitle: "Fixture sample"\nslug: fixture-sample\nsample: true\n---\n'
+  );
   const untouched = () => ({ templates: issueTemplates(root), site: read(root, '_data/site.yml') });
 
-  // The template has cohorts off: the cohort portal preset turns them on.
+  // Cohorts are off: the cohort portal preset turns them on.
   let before = untouched();
   let output = setupDryRun(root, 'cohort-portal');
   assert.match(output, /Then `npm run generate` will change:/u);
