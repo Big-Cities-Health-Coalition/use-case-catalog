@@ -16,7 +16,7 @@ area:
 stage: "In production"
 summary: "Efficient and accurate way to link identities across datasets"
 impact: ""
-review_status: Under review
+review_status: "Reviewed & approved"
 ai_role: "AI is part of the solution"
 ai_types: []
 ai_tools:
