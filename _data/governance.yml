@@ -90,7 +90,7 @@ policies:
     body: |
       No personal information (PII) or protected health information (PHI) may appear in a submitted resource, its documentation, its example data or its screenshots. Every submitter attests to this when they submit; reviewers spot-check during intake and substantive review.
 
-      If a privacy or security issue is discovered after publication, the entry is taken down first and discussed second: email the maintainers, and the page is removed from the site while the question is worked out. The maintainer runbook describes exactly what happens.
+      If a privacy or security issue is discovered after publication, the entry is taken down first and discussed second. Report it privately, never in a public issue: use [GitHub's private reporting form](https://github.com/Big-Cities-Health-Coalition/use-case-catalog/security/advisories/new), or write to the coalition at the address at the foot of this page. The page is removed from the site while the question is worked out. The maintainer runbook describes exactly what happens.
   - id: licensing
     title: "Licensing and intellectual property"
     body: |
@@ -104,7 +104,7 @@ policies:
   - id: accessibility
     title: "Accessibility and quality"
     body: |
-      Published pages are built to WCAG 2.1 AA and tested for it on every build with automated checks (axe, pa11y, Lighthouse) and keyboard-only walkthroughs. If something on this site does not work for you, email the maintainers (the address is at the foot of this page) and it will be treated as a defect, not a request.
+      Published pages are built to WCAG 2.1 AA and tested for it on every build with automated checks (axe, pa11y, Lighthouse) and keyboard-only walkthroughs. If something on this site does not work for you, tell us through the **Report a problem with the site** link at the foot of this page, which opens an issue on GitHub, or write to the coalition at the address shown there. Either way it will be treated as a defect, not a request.
 
       There is a minimum documentation bar: a resource with no working link and no reachable contact is not published, because nobody could evaluate or adopt it.
   - id: maintenance
@@ -114,7 +114,7 @@ policies:
   - id: appeals
     title: "Appeals and dispute resolution"
     body: |
-      A submitter who disagrees with a review decision may appeal to the full Governance Committee by replying on the review thread or emailing the maintainers. The committee's answer, with its rationale, is final for that submission; the submitter is always free to revise and resubmit.
+      A submitter who disagrees with a review decision may appeal to the full Governance Committee by replying on GitHub, on their submission's issue or its review thread. The committee's answer, with its rationale, is final for that submission; the submitter is always free to revise and resubmit.
   - id: conduct
     title: "Code of conduct"
     body: |
@@ -125,4 +125,4 @@ policies:
 # and links to the repository's contributor guide, code of conduct and
 # maintainer guide (built from site.yml github.repository, so a fork's links
 # point at the fork).
-outro: "Questions about any of this — or a decision you want to appeal — go to the maintainers. Proposed changes to the template, the categories or these rules go to the Governance Committee, which meets on the work group's regular cadence."
+outro: "Questions about any of this go to the maintainers. To appeal a decision, reply on your submission's issue on GitHub. Proposed changes to the template, the categories or these rules go to the Governance Committee, which meets on the work group's regular cadence."

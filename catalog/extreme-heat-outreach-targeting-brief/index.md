@@ -6,6 +6,7 @@ slug: extreme-heat-outreach-targeting-brief
 published: "2026-08-26"
 updated: 2026-09-28
 featured: false
+sample: true
 thumbnail: ""
 organization: Sunrise Plains Regional Health Coalition
 solution_type:

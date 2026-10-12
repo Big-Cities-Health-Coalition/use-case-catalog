@@ -10,12 +10,13 @@ project promises paid support, 24-hour response, or uninterrupted service.
 | Role | Account | Responsibilities |
 |---|---|---|
 | Interim technical maintainer | `@crypticpy` (contracted by BCHC) | Shared code review, security triage, PHCT releases, CI, and protected BCHC updates, until BCHC names its own technical maintainer. |
-| BCHC product owner | **To be named by BCHC — handoff blocker** | Content policy, demo/publication decisions, taxonomy, governance language, and final go/no-go. |
-| Backup release maintainer | **Unassigned — release blocker** | Must be able to run a release, update BCHC, roll back, rotate credentials, and handle a takedown without the technical maintainer. |
+| BCHC product owner | `@jaschitter` (Jenny, Big Cities Health Coalition) | Content policy, demo/publication decisions, taxonomy, governance language, and final go/no-go. |
+| Backup release maintainer | `@crypticpy` | Must be able to run a release, update BCHC, roll back, rotate credentials, and handle a takedown without the technical maintainer. |
 
-The BCHC deployment is not ready for operational handoff while the backup role is unassigned. Add the
-real GitHub account to `.github/CODEOWNERS`, branch rules, Pages/admin access, and this table only
-after that person accepts the role and completes the drills in `docs/maintaining.md`.
+Until BCHC names its own technical maintainer, `@crypticpy` holds both the interim technical role and
+the backup role, so a release, rollback or takedown still depends on one person. When BCHC names
+someone, add their GitHub account to `.github/CODEOWNERS`, branch rules, Pages/admin access, and this
+table only after they accept the role and complete the drills in `docs/maintaining.md`.
 
 ## Ownership and the interim arrangement
 
