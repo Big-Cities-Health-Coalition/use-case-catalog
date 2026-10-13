@@ -43,11 +43,12 @@ test.after(() => booted.forEach((dom) => dom.window.close()));
 /**
  * A booted submit page. The scripts are evaluated only once the document is
  * complete, mirroring the deferred <script> tags the layout emits.
- * @param {{popupBlocked?: boolean, draft?: object, ui?: object,
+ * @param {{popupBlocked?: boolean, draft?: object, ui?: object, previous?: object,
  *   plausible?: 'stub'|'spy'|'throws'}} [options]
  *   popupBlocked makes window.open return null the way a pop-up blocker does;
  *   draft seeds a saved draft in localStorage before the scripts boot, and ui
- *   rides beside it as the draft's stored UI state (step, short-form mode).
+ *   rides beside it as the draft's stored UI state (step, short-form mode);
+ *   previous seeds the earlier draft kept aside under `<key>:previous`.
  *   plausible stands in for a site with analytics on: `stub` runs the queue
  *   stub _includes/head.html renders (Plausible's script itself never loads
  *   here), `spy` records every call in ctx.events, `throws` throws on every
@@ -97,6 +98,10 @@ async function boot(options = {}) {
     const stored = { saved: new Date().toISOString(), fields: options.draft };
     if (options.ui) stored.ui = options.ui;
     window.localStorage.setItem(draftKey, JSON.stringify(stored));
+  }
+  if (options.previous) {
+    const kept = { saved: new Date(Date.now() - 3600000).toISOString(), fields: options.previous };
+    window.localStorage.setItem(draftKey + ':previous', JSON.stringify(kept));
   }
 
   SCRIPTS.forEach((rel) => window.eval(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
@@ -360,6 +365,17 @@ test('the review step reads the answers back before anything is sent', async () 
   assert.ok(panel.querySelector('a[href="/status/"]'), '"what happens next" links to the status page');
   // Optional questions left blank are shown as such rather than dropped.
   assert.match(panel.textContent, /Not answered/);
+  // GitHub can drop a signed-out visitor's answers on its sign-in page; the
+  // intro says so before the first question, this repeats it beside Send.
+  const reminder = Array.from(panel.querySelectorAll('p')).find((p) =>
+    /Not signed in to GitHub\?/.test(p.textContent)
+  );
+  assert.ok(reminder, 'no sign-in reminder in the review panel');
+  assert.equal(
+    reminder.nextElementSibling.querySelector('button').textContent,
+    'Send to GitHub',
+    'the reminder sits just above the send button'
+  );
 });
 
 test('Change takes you back to the question it belongs to', async () => {
@@ -582,6 +598,17 @@ test('the confirmation panel says the submission is not finished yet', async () 
   assert.ok(ctx.storedDraft(), 'the draft survives the hand-off');
   press(ctx, 'Submitted it? Delete the saved draft');
   assert.equal(ctx.storedDraft(), null);
+  // Deleted means deleted: the form is still filled in, and the autosave that
+  // used to fire after the debounce must not write it all back.
+  await settle();
+  assert.equal(ctx.storedDraft(), null, 'the deleted draft came back after the debounce');
+  ctx.window.dispatchEvent(new ctx.window.Event('pagehide'));
+  assert.equal(ctx.storedDraft(), null, 'leaving the page wrote the deleted draft back');
+
+  // The next real edit is new work, and is saved as usual.
+  answer(ctx, 'title', 'Another one');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'Another one');
 });
 
 test('the Markdown fallback keeps the answers GitHub cannot prefill', async () => {
@@ -660,23 +687,63 @@ test('links rows can be added, filled and serialized', async () => {
   assert.equal(ctx.window.SubmitForm.serialize(field), 'Evaluation | https://example.org/eval.pdf');
 });
 
-test('autosave is held while the restore prompt is unanswered', async () => {
+test('typing while the restore prompt is unanswered saves the new work and keeps the old draft', async () => {
   const ctx = await boot({ draft: { title: 'Saved earlier' } });
-  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, false);
+  const bar = ctx.form.querySelector('[data-draft-restore]');
+  const previous = () => JSON.parse(ctx.window.localStorage.getItem(ctx.draftKey + ':previous') || 'null');
+  assert.equal(bar.hidden, false);
 
-  // Typing before the prompt is answered must not overwrite the saved draft.
-  answer(ctx, 'title', 'Typed over the offer');
+  // Nothing typed yet: the offered draft is left exactly where it is.
   await settle();
   assert.equal(ctx.storedDraft().fields.title, 'Saved earlier');
+  assert.equal(previous(), null);
 
+  // The first edit moves the old draft aside and saves the new work.
+  answer(ctx, 'title', 'Typed over the offer');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'Typed over the offer', 'the new work was not saved');
+  assert.equal(previous().fields.title, 'Saved earlier', 'the old draft was not kept');
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /Saved just now/);
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /earlier draft is kept/);
+  // The bar stays up and says what Restore will now do.
+  assert.equal(bar.hidden, false);
+  assert.match(
+    bar.querySelector('[data-draft-count]').textContent,
+    /Restoring it replaces what you have typed since/
+  );
+
+  // Further typing keeps saving, without touching the kept draft.
+  answer(ctx, 'title', 'Still typing');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'Still typing');
+  assert.equal(previous().fields.title, 'Saved earlier');
+
+  // Restore brings the old draft back from where it was kept.
   ctx.form.querySelector('[data-draft-action="restore"]').click();
   assert.equal(ctx.form.querySelector('[data-field="title"] input').value, 'Saved earlier');
-  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
-
-  // ...and autosave resumes once the decision is made.
-  answer(ctx, 'title', 'Typed after restoring');
+  assert.equal(bar.hidden, true);
   await settle();
-  assert.equal(ctx.storedDraft().fields.title, 'Typed after restoring');
+  assert.equal(ctx.storedDraft().fields.title, 'Saved earlier');
+  // Kept until the restored answers were saved, then used up.
+  assert.equal(previous(), null, 'the kept copy is used up by restoring it');
+});
+
+test('deleting the kept draft after typing leaves the new work saved', async () => {
+  const ctx = await boot({ draft: { title: 'Saved earlier' } });
+  answer(ctx, 'title', 'New work');
+  await settle();
+  const discard = ctx.form.querySelector('[data-draft-action="discard"]');
+  assert.equal(discard.textContent.trim(), 'Delete the earlier draft');
+  discard.click();
+
+  assert.equal(ctx.window.localStorage.getItem(ctx.draftKey + ':previous'), null);
+  assert.equal(ctx.storedDraft().fields.title, 'New work', 'deleting the old draft took the new one with it');
+  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /Earlier draft deleted/);
+
+  answer(ctx, 'title', 'More new work');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'More new work');
 });
 
 test('discarding the prompt clears the draft and resumes autosave', async () => {
@@ -904,6 +971,363 @@ test('"Save and come back later" writes the draft without waiting for the deboun
   ctx.form.querySelector('[data-draft-action="save"]').click();
   assert.equal(ctx.storedDraft().fields.title, 'Half finished');
   assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /Saved\. Come back/);
+});
+
+test('leaving the page saves what was typed inside the autosave debounce', async () => {
+  const ctx = await boot();
+  answer(ctx, 'title', 'Typed and closed');
+  assert.equal(ctx.storedDraft(), null, 'precondition: the debounce has not fired yet');
+  ctx.window.dispatchEvent(new ctx.window.Event('pagehide'));
+  assert.equal(ctx.storedDraft().fields.title, 'Typed and closed');
+
+  // Switching away (a phone backgrounding the browser) flushes too.
+  answer(ctx, 'title', 'Typed and switched away');
+  Object.defineProperty(ctx.document, 'visibilityState', { configurable: true, value: 'hidden' });
+  ctx.document.dispatchEvent(new ctx.window.Event('visibilitychange'));
+  assert.equal(ctx.storedDraft().fields.title, 'Typed and switched away');
+});
+
+/** Dispatch beforeunload. @param {object} ctx @returns {boolean} whether leaving was challenged */
+function leaveChallenged(ctx) {
+  const event = new ctx.window.Event('beforeunload', { cancelable: true });
+  ctx.window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test('leaving warns only when typed answers could not be saved', async () => {
+  const ctx = await boot();
+  assert.equal(leaveChallenged(ctx), false, 'an untouched form leaves quietly');
+  answer(ctx, 'title', 'Saved on the way out');
+  assert.equal(leaveChallenged(ctx), false, 'answers the flush could save leave quietly');
+  assert.equal(ctx.storedDraft().fields.title, 'Saved on the way out');
+
+  // A full quota: the write fails, so leaving would lose the answers.
+  const setItem = ctx.window.Storage.prototype.setItem;
+  ctx.window.Storage.prototype.setItem = function (key, value) {
+    if (key === ctx.draftKey) throw new ctx.window.DOMException('full', 'QuotaExceededError');
+    return setItem.call(this, key, value);
+  };
+  answer(ctx, 'title', 'Will not fit');
+  assert.equal(leaveChallenged(ctx), true, 'unsaved answers must be challenged');
+});
+
+test('the confirmation panel promises a saved draft only when the answers really are saved', async () => {
+  const ctx = await boot();
+  fillRequired(ctx);
+  await settle();
+  // A full quota: the answers in the form never reach storage.
+  const setItem = ctx.window.Storage.prototype.setItem;
+  ctx.window.Storage.prototype.setItem = function (key, value) {
+    if (key === ctx.draftKey) throw new ctx.window.DOMException('full', 'QuotaExceededError');
+    return setItem.call(this, key, value);
+  };
+  answer(ctx, 'title', 'Too big to keep');
+  sendToGitHub(ctx);
+
+  const panel = ctx.form.querySelector('[data-review]');
+  assert.match(panel.textContent, /Almost there/);
+  assert.doesNotMatch(panel.textContent, /still saved in this browser/);
+  assert.match(panel.textContent, /could not be saved on this device/);
+  assert.match(panel.textContent, /keep this tab open until the issue is submitted/);
+  // Nothing to delete, and clearing the form would lose the only copy.
+  const buttons = Array.from(panel.querySelectorAll('button')).map((button) => button.textContent);
+  assert.ok(!buttons.includes('Submitted it? Delete the saved draft'), buttons.join(' | '));
+});
+
+test('a browser that refuses storage warns before leaving typed answers behind', async () => {
+  const dom = new JSDOM('<!doctype html><body>' + HTML + '</body>', {
+    url: 'https://example.org/submit/',
+    runScripts: 'outside-only',
+  });
+  booted.push(dom);
+  const { window } = dom;
+  await new Promise((resolve) => {
+    if (window.document.readyState === 'complete') resolve();
+    else window.addEventListener('load', resolve);
+  });
+  // A locked-down private window: localStorage throws from the first touch.
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    get() {
+      throw new window.Error('access denied');
+    },
+  });
+  SCRIPTS.forEach((rel) => window.eval(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+  const page = { window, form: window.document.querySelector('[data-submit-form]') };
+
+  assert.equal(leaveChallenged(page), false, 'nothing typed, nothing to lose');
+  answer(page, 'title', 'Nowhere to keep this');
+  assert.equal(leaveChallenged(page), true);
+
+  // Pressing "Save" after a delete still has nowhere to put the answers.
+  page.form.querySelector('[data-draft-action="clear"]').click();
+  page.form.querySelector('[data-draft-action="save"]').click();
+  assert.equal(leaveChallenged(page), true, 'a save with no storage is still unsaved');
+});
+
+test('coming back with new work and a kept earlier draft continues the new work and keeps both', async () => {
+  // Left last time after typing over draft A: A was kept aside, B saved.
+  const ctx = await boot({
+    draft: { title: 'B, the newer work' },
+    previous: { title: 'A, the earlier draft' },
+  });
+  const previous = () => JSON.parse(ctx.window.localStorage.getItem(ctx.draftKey + ':previous') || 'null');
+  const title = ctx.form.querySelector('[data-field="title"] input');
+  const bar = ctx.form.querySelector('[data-draft-restore]');
+
+  // The newer work is back in the form; the earlier draft is still on offer.
+  assert.equal(title.value, 'B, the newer work');
+  assert.equal(bar.hidden, false);
+  assert.match(
+    bar.querySelector('[data-draft-count]').textContent,
+    /Restoring it replaces what you have typed since/
+  );
+  assert.equal(
+    ctx.form.querySelector('[data-draft-action="discard"]').textContent.trim(),
+    'Delete the earlier draft'
+  );
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /earlier draft is kept/);
+
+  // Typing again saves over B (it is in the form) and never touches A.
+  answer(ctx, 'title', 'C, typed after coming back');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'C, typed after coming back');
+  assert.equal(previous().fields.title, 'A, the earlier draft', 'the earlier draft was overwritten');
+
+  ctx.form.querySelector('[data-draft-action="restore"]').click();
+  assert.equal(title.value, 'A, the earlier draft');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'A, the earlier draft');
+  assert.equal(previous(), null);
+});
+
+test('removing a filled link row after deleting the draft saves again', async () => {
+  const ctx = await boot();
+  const wrap = ctx.form.querySelector('[data-field="resources"]');
+  wrap.querySelector('[data-links-add]').click();
+  const rows = () => wrap.querySelectorAll('[data-links-rows] > *');
+  [
+    ['Evaluation', 'https://example.org/eval.pdf'],
+    ['Slides', 'https://example.org/slides.pdf'],
+  ].forEach(([label, url], index) => {
+    const row = rows()[index];
+    row.querySelector('[data-links-label]').value = label;
+    row.querySelector('[data-links-url]').value = url;
+    row.querySelector('[data-links-url]').dispatchEvent(new ctx.window.Event('input', { bubbles: true }));
+  });
+  await settle();
+  assert.equal(ctx.storedDraft().fields.resources.length, 2);
+
+  ctx.form.querySelector('[data-draft-action="clear"]').click();
+  assert.equal(ctx.storedDraft(), null);
+
+  // Removing a filled row changes the answers: that is an edit, and is saved.
+  rows()[1].querySelector('[data-links-remove]').click();
+  await settle();
+  assert.ok(ctx.storedDraft(), 'removing a filled row was not saved');
+  assert.equal(ctx.storedDraft().fields.resources.length, 1);
+  assert.equal(ctx.storedDraft().fields.resources[0].label, 'Evaluation');
+});
+
+/**
+ * Make writes of the main draft key fail the way a full quota does, from now on.
+ * @param {object} ctx from boot()
+ * @param {(value: string) => boolean} [when] fail only these values
+ */
+function failDraftWrites(ctx, when = () => true) {
+  const setItem = ctx.window.Storage.prototype.setItem;
+  ctx.window.Storage.prototype.setItem = function (key, value) {
+    if (key === ctx.draftKey && when(value)) throw new ctx.window.DOMException('full', 'QuotaExceededError');
+    return setItem.call(this, key, value);
+  };
+}
+
+test('a failed "Save and come back later" after a delete still warns before leaving', async () => {
+  const ctx = await boot();
+  answer(ctx, 'title', 'Typed once');
+  await settle();
+  ctx.form.querySelector('[data-draft-action="clear"]').click();
+  assert.equal(leaveChallenged(ctx), false, 'precondition: nothing to lose right after a delete');
+
+  failDraftWrites(ctx);
+  ctx.form.querySelector('[data-draft-action="save"]').click();
+  assert.equal(ctx.storedDraft(), null);
+  assert.doesNotMatch(ctx.form.querySelector('[data-draft-status]').textContent, /^Saved/);
+  assert.equal(leaveChallenged(ctx), true, 'the answers are in no storage, so leaving must be challenged');
+});
+
+test('new answers too big to save leave the offered draft where it was', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  const previous = () => ctx.window.localStorage.getItem(ctx.draftKey + ':previous');
+  failDraftWrites(ctx, (value) => value.includes('too big'));
+
+  answer(ctx, 'title', 'B, too big to save');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'A, the offered draft', 'the offered draft was lost');
+  assert.equal(previous(), null, 'a half-done move was left behind');
+  assert.doesNotMatch(ctx.form.querySelector('[data-draft-status]').textContent, /Saved/);
+  // Nothing moved, so the bar still offers A from where it always was.
+  assert.equal(
+    ctx.form.querySelector('[data-draft-action="discard"]').textContent.trim(),
+    'Delete it and start fresh'
+  );
+  assert.equal(leaveChallenged(ctx), true);
+
+  // Restore still brings A back.
+  ctx.form.querySelector('[data-draft-action="restore"]').click();
+  assert.equal(ctx.form.querySelector('[data-field="title"] input').value, 'A, the offered draft');
+});
+
+test('deleting the kept draft after a failed save does not claim the new answers are saved', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  answer(ctx, 'title', 'B, saved once');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'B, saved once', 'precondition: the move went through');
+
+  failDraftWrites(ctx);
+  answer(ctx, 'title', 'B, grown past the quota');
+  await settle();
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  const status = ctx.form.querySelector('[data-draft-status]').textContent;
+  assert.doesNotMatch(status, /still saved/);
+  assert.match(status, /could not be saved/);
+  assert.equal(leaveChallenged(ctx), true);
+});
+
+test('deleting the kept draft makes room to save answers that did not fit beside it', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  answer(ctx, 'title', 'B, saved once');
+  await settle();
+  // Too big only while the earlier draft takes up room.
+  failDraftWrites(ctx, () => ctx.window.localStorage.getItem(ctx.draftKey + ':previous') !== null);
+  answer(ctx, 'title', 'B, grown past the quota');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'B, saved once', 'precondition: the save failed');
+
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft().fields.title, 'B, grown past the quota');
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /still saved/);
+  assert.equal(leaveChallenged(ctx), false);
+});
+
+test('deleting the offered draft after the new answers did not fit saves them in its place', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  const previous = () => ctx.window.localStorage.getItem(ctx.draftKey + ':previous');
+  // Storage holds one draft, not two: the move aside fails.
+  failDraftWrites(ctx, () => previous() !== null);
+  answer(ctx, 'title', 'B, no room beside A');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'A, the offered draft', 'precondition: the save failed');
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /delete it to keep saving/);
+
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft().fields.title, 'B, no room beside A', 'the visible answers were not saved');
+  assert.equal(previous(), null);
+  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
+  assert.doesNotMatch(ctx.form.querySelector('[data-draft-status]').textContent, /could not/);
+  assert.equal(leaveChallenged(ctx), false);
+
+  // And autosave carries on, not held as after "Delete the saved draft".
+  answer(ctx, 'title', 'B, still typing');
+  await settle();
+  assert.equal(ctx.storedDraft().fields.title, 'B, still typing');
+});
+
+test('deleting the offered draft when even then the answers will not fit says so and warns', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  failDraftWrites(ctx);
+  answer(ctx, 'title', 'B, never fits');
+  await settle();
+
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft(), null, 'the offered draft was the one asked to go');
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /could not be saved/);
+  assert.equal(leaveChallenged(ctx), true);
+});
+
+test('"Delete it and start fresh" right after typing deletes the old draft and saves the new answers', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  answer(ctx, 'title', 'B, typed a moment ago');
+  // Inside the autosave debounce: nothing written yet.
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft().fields.title, 'B, typed a moment ago');
+  assert.equal(leaveChallenged(ctx), false);
+});
+
+test('"Delete it and start fresh" with nothing typed just deletes the offered draft', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft(), null);
+  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
+  assert.equal(ctx.form.querySelector('[data-field="title"] input').value, '');
+  assert.equal(leaveChallenged(ctx), false);
+});
+
+test('"Delete it and start fresh" leaves alone a draft another tab has since replaced', async () => {
+  const ctx = await boot({ draft: { title: 'A, offered in both tabs' } });
+  const store = ctx.window.localStorage;
+  // The other tab typed first: A moved aside, its newer work saved in A's place.
+  store.setItem(ctx.draftKey + ':previous', store.getItem(ctx.draftKey));
+  store.setItem(
+    ctx.draftKey,
+    JSON.stringify({ saved: new Date().toISOString(), fields: { title: 'B, the other tab' } })
+  );
+
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(ctx.storedDraft().fields.title, 'B, the other tab', "the other tab's work was deleted");
+  assert.equal(JSON.parse(store.getItem(ctx.draftKey + ':previous')).fields.title, 'A, offered in both tabs');
+  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /another tab/);
+});
+
+test('"Delete the earlier draft" leaves alone a kept draft another tab has since replaced', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  const store = ctx.window.localStorage;
+  answer(ctx, 'title', 'B, typed over it');
+  await settle();
+  // Meanwhile another tab put a different draft under the kept key.
+  const theirs = JSON.stringify({ saved: new Date().toISOString(), fields: { title: 'C, the other tab' } });
+  store.setItem(ctx.draftKey + ':previous', theirs);
+
+  ctx.form.querySelector('[data-draft-action="discard"]').click();
+  assert.equal(store.getItem(ctx.draftKey + ':previous'), theirs, "the other tab's draft was deleted");
+  assert.equal(ctx.storedDraft().fields.title, 'B, typed over it');
+  assert.equal(ctx.form.querySelector('[data-draft-restore]').hidden, true);
+  assert.match(ctx.form.querySelector('[data-draft-status]').textContent, /another tab/);
+});
+
+test('restoring the kept draft keeps it stored until it is saved again', async () => {
+  const ctx = await boot({ draft: { title: 'A, the offered draft' } });
+  const previous = () => JSON.parse(ctx.window.localStorage.getItem(ctx.draftKey + ':previous') || 'null');
+  answer(ctx, 'title', 'B, typed over it');
+  await settle();
+
+  failDraftWrites(ctx);
+  ctx.form.querySelector('[data-draft-action="restore"]').click();
+  assert.equal(ctx.form.querySelector('[data-field="title"] input').value, 'A, the offered draft');
+  await settle();
+  assert.equal(
+    previous().fields.title,
+    'A, the offered draft',
+    'A is in the form only, and was dropped from storage'
+  );
+});
+
+test('coming back to both drafts also reopens the newer one on its step, in its mode', async () => {
+  const ctx = await boot({
+    draft: { title: 'B, the newer work' },
+    ui: { step: 'build', short: true },
+    previous: { title: 'A, the earlier draft' },
+  });
+  await settle();
+  assert.equal(ctx.form.querySelector('[data-field="title"] input').value, 'B, the newer work');
+  assert.equal(
+    ctx.form.querySelector('[data-section="build"]').hidden,
+    false,
+    'the saved step was not reopened'
+  );
+  assert.equal(ctx.form.querySelector('[data-field="impact"]').hidden, true, 'short mode is back on');
+  assert.equal(ctx.form.querySelector('[data-shortform-toggle]').textContent, 'Show every question');
 });
 
 test('a browser that refuses storage says so where the draft bar would be', async () => {

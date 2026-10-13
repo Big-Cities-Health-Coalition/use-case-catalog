@@ -1,7 +1,8 @@
 name: New entry from issue
 
 # A submission arrives as an issue labelled `content:new-entry` (from /submit/ or
-# the issue form). This scaffolds catalog/<slug>/index.md plus any screenshots
+# the issue form), or — sent from /submit/ through "Sign in with GitHub" — as an
+# unlabelled issue the `claim` job below recognises and labels. This scaffolds catalog/<slug>/index.md plus any screenshots
 # the submitter attached, and opens a pull request that closes the issue.
 #
 # Trust model (see SECURITY.md): anyone can open the issue that starts this job,
@@ -47,13 +48,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # "Sign in with GitHub" (assets/js/submit/direct.js) files the submission as
+  # the submitter through GitHub's API, and GitHub drops the labels of an API
+  # request from anyone without push access — so that issue opens with no
+  # label at all. This recognises an entry submission by its shape (the form's
+  # title prefix and every question's heading) and labels it. A label added
+  # with the workflow's token starts no new run, so the jobs below take the
+  # claim from this job's output. Nothing here reads the body into a shell:
+  # scripts/lib/direct_submission.mjs gets it from the event payload.
+  #
+  # It runs on `edited` too. The submit page tells a submitter with a file to
+  # edit the issue straight away, and that edit cancels the `opened` run (one
+  # run per issue, above) — possibly before this job labelled it — so the
+  # edited run must be able to claim it, or the submission is never picked up.
+  # Claiming twice is harmless (the label is just added again, and the "label
+  # missing" message is posted once), and an issue a maintainer took the label
+  # off is left alone.
+  claim:
+    if: >-
+      (github.event.action == 'opened' || github.event.action == 'edited')
+      && github.event.issue.state == 'open'
+      && !contains(join(github.event.issue.labels.*.name, ','), 'content:')
+      && startsWith(github.event.issue.title, '[')
+      && contains(github.event.issue.body, '### ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      claimed: ${{ steps.claim.outputs.claimed }}
+    steps:
+      # The default branch, for the schema and the message module.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Install npm dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Label an entry submission that arrived without its label
+        id: claim
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const direct = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/direct_submission.mjs`).href);
+            const claimed = await direct.claimEntrySubmission({ github, context, core, root: process.env.GITHUB_WORKSPACE });
+            core.setOutput('claimed', claimed ? 'true' : 'false');
+
   scaffold:
+    needs: claim
     # `state == 'open'` matters: editing a closed, already-merged submission —
     # to fix a typo, to add a note — would otherwise force-push its branch again
-    # and try to edit a merged pull request.
+    # and try to edit a merged pull request. `!cancelled()` lets this run when
+    # `claim` was skipped, which is every labelled issue.
     if: >-
-      github.event.issue.state == 'open'
-      && contains(github.event.issue.labels.*.name, 'content:new-entry')
+      !cancelled()
+      && github.event.issue.state == 'open'
+      && (contains(github.event.issue.labels.*.name, 'content:new-entry') || needs.claim.outputs.claimed == 'true')
       && (vars.SUBMISSIONS_OPEN != 'false'
           || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
@@ -421,11 +483,15 @@ jobs:
   # With SUBMISSIONS_OPEN set to `false` the job above simply does not run for
   # an outside contributor, and their submission sat there with no reply at all
   # — the one case where the automation is working exactly as configured and
-  # still looks broken to the person who used the form.
+  # still looks broken to the person who used the form. On an edit it runs only
+  # when the claim has just labelled the issue (the opened run was cancelled
+  # first); the message is posted once either way.
   say-submissions-are-closed:
+    needs: claim
     if: >-
-      github.event.action == 'opened'
-      && contains(github.event.issue.labels.*.name, 'content:new-entry')
+      !cancelled()
+      && (github.event.action == 'opened' || needs.claim.outputs.claimed == 'true')
+      && (contains(github.event.issue.labels.*.name, 'content:new-entry') || needs.claim.outputs.claimed == 'true')
       && vars.SUBMISSIONS_OPEN == 'false'
       && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest

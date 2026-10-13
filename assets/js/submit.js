@@ -1,7 +1,7 @@
 /**
  * Submit form — entry point. Wires the pieces in assets/js/submit/*.js:
  * fields (registry) → validate → repeatable → preview → draft → handoff →
- * review.
+ * review, and direct (Sign in with GitHub) when the site has it on.
  *
  * Loaded last by the `scripts:` list in submit/index.md front matter, so every
  * window.SubmitForm helper it calls is already defined.
@@ -201,7 +201,19 @@
       return titleField ? String(ns.readValue(titleField)) : '';
     }
 
-    let draft = { save: function () {}, clear: function () {}, flush: function () {} };
+    /** @returns {string} the issue title, as the prefilled link sets it */
+    function issueTitle() {
+      return (form.dataset.titlePrefix || '') + (entryTitle() || 'New entry');
+    }
+
+    let draft = {
+      save: function () {},
+      clear: function () {},
+      flush: function () {},
+      unsaved: function () {
+        return false;
+      },
+    };
 
     /**
      * Warn while there is still time to do something about it: once the
@@ -311,7 +323,8 @@
       if (stepper) stepper.apply(true);
     };
 
-    ns.initRepeatables(fields, refresh);
+    // Adding or removing a row dispatches `input`, handled below.
+    ns.initRepeatables(fields);
 
     form.addEventListener('input', (event) => {
       const wrap = event.target.closest ? event.target.closest('[data-field]') : null;
@@ -394,13 +407,48 @@
       ns.renderConfirmation(form, fields, {
         url: url,
         email: form.dataset.fallbackEmail || '',
-        subject: (form.dataset.titlePrefix || '') + (entryTitle() || 'New entry'),
+        subject: issueTitle(),
+        saved: !draft.unsaved(),
         onDelete: function () {
+          // Clearing also holds autosave until the next edit, so the refresh
+          // below repaints the form without saving it all back.
           draft.clear();
           ns.exitReview(form);
           say(status, 'Saved draft deleted. Thanks for sending it in.');
           refresh();
         },
+      });
+    }
+
+    // "Sign in with GitHub" (assets/js/submit/direct.js), loaded only on a
+    // site with `submit.signin_url` set; null everywhere else. Not without a
+    // title question: GitHub's form then asks for the title itself, and only
+    // it can — the link hand-off is the way.
+    const direct = titleField && typeof ns.initDirect === 'function' ? ns.initDirect(form) : null;
+
+    /**
+     * Send the answers straight to GitHub as the signed-in submitter. The
+     * draft is deleted only once GitHub answers 201 — every other outcome
+     * keeps it, and offers the link hand-off (send, above) instead.
+     * @param {HTMLButtonElement} button held while the request is out
+     */
+    function sendDirect(button) {
+      direct.submit({
+        button: button,
+        status: form.querySelector('[data-review-status]'),
+        title: issueTitle(),
+        body: ns.issueFormBody(fields),
+        onCreated: function (issue) {
+          draft.clear();
+          countEvent('Send to GitHub');
+          say(status, '');
+          ns.renderSubmitted(
+            form,
+            issue,
+            fields.filter((field) => field.type === 'file').map((field) => field.label)
+          );
+        },
+        onFallback: send,
       });
     }
 
@@ -421,11 +469,30 @@
       }
       ns.hideSummary(summary);
       say(status, '');
+      // Signed in now, the review sends directly — and keeps doing so even
+      // if the sign-in runs out before the button is pressed: direct.submit
+      // then asks for a fresh sign-in rather than switching routes unasked.
+      const signedIn = Boolean(direct && direct.signedIn());
       ns.renderReview(form, fields, {
-        onSend: send,
+        onSend: signedIn ? sendDirect : send,
         onBack: refresh,
         sendLabel: form.dataset.repo ? '' : 'Copy your answers',
+        direct: signedIn ? { login: direct.login() } : null,
       });
+    });
+
+    // Leaving the page, or a phone putting the browser away, must not lose
+    // what was typed inside the autosave debounce.
+    window.addEventListener('pagehide', () => draft.flush());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') draft.flush();
+    });
+    // Asked only when answers could not be saved even now — storage refused
+    // or failed — not on every leave: a saved draft is already safe.
+    window.addEventListener('beforeunload', (event) => {
+      if (!draft.unsaved()) return;
+      event.preventDefault();
+      event.returnValue = '';
     });
 
     /**
@@ -460,8 +527,7 @@
           say(status, 'No email address is configured for this catalog. Use the GitHub button instead.');
           return;
         }
-        const subject = (form.dataset.titlePrefix || '') + (entryTitle() || 'New entry');
-        window.location.href = ns.mailtoUrl(email, subject, ns.markdownBody(fields));
+        window.location.href = ns.mailtoUrl(email, issueTitle(), ns.markdownBody(fields));
         return;
       }
 

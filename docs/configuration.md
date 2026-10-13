@@ -185,6 +185,7 @@ submit:
   turnaround: "…"           # the last step of "what happens next": what happens after a maintainer picks it up
   review_note: "…"          # safety callout beside the form, and the first block of the GitHub issue form
   fallback_email: "…"       # the "Email it instead" button; false turns email submissions off
+  signin_url: ""            # optional "Sign in with GitHub, submit directly" service address (see below)
 ```
 
 `accepting: false` replaces the form with a "Submissions are paused" notice — using
@@ -205,6 +206,34 @@ To send everyone through GitHub while keeping the contact email, set
 removes every email route from `/submit/`: the button, the `mailto:` links, the
 "Email the maintainers" line on the paused notice and the sentences that point
 at *Email it instead*. Clearing both keys does the same.
+
+`signin_url` turns on **Sign in with GitHub, submit directly**. Normally
+`/submit/` hands the answers to GitHub's issue form in a prefilled link, and a
+long write-up does not fit in one: GitHub keeps a prefilled link through its
+sign-in page only up to about 5,400 characters. With `signin_url` set, a
+submitter can sign in with GitHub on the page itself, and *Submit to GitHub*
+then creates the issue through GitHub's API, as them, however long the answers
+are (up to GitHub's 65,536-character issue limit). The body is exactly what the
+issue form would have written, so the same automation drafts the pull request.
+Everyone who does not sign in keeps the link hand-off, and it stays the way out
+whenever a direct send fails.
+
+The value is the address of a small sign-in service you deploy yourself from
+[`services/github-signin/`](../services/github-signin/README.md), together with
+a GitHub App that has **Issues: read and write** on the catalog repository. Use
+the service's origin only, for example `"https://catalog-signin.vercel.app"`:
+`https://`, no path, no trailing slash (`http://localhost` is accepted for
+local testing). `npm run validate` checks it. Every page on the site's origin
+is trusted with a signed-in submitter's token, which matters on a shared
+`https://<owner>.github.io` origin: read
+[the README's origin section](../services/github-signin/README.md#every-page-on-your-sites-origin-is-trusted-with-the-token)
+before you turn it on there. Leave it blank (the default) and
+the page is exactly as before. It has no effect when the site has no GitHub
+repository configured, or when the schema has no `title` field. File questions
+cannot be sent this way: after a direct submission the page tells the
+submitter to add any file by editing the new issue on GitHub. How these issues
+reach the automation, and what to check when one does not, is in
+[admin-guide.md → Direct submissions](admin-guide.md#direct-submissions-sign-in-with-github).
 
 The shape of the form follows the schema, with nothing to configure here: when
 `schema.groups` has more than one group the form opens as one step per group

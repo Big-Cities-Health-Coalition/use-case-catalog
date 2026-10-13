@@ -16,8 +16,13 @@
  * <template> with the note on following a sent submission, cloned into the
  * confirmation panel; absent when the site has no repository).
  *
+ * When the site has "Sign in with GitHub" on and the submitter is signed in
+ * (assets/js/submit/direct.js), the same panel sends the answers straight to
+ * GitHub: `handlers.direct` swaps the copy that talks about GitHub's form, and
+ * the confirmation panel then shows the issue GitHub created.
+ *
  * Exposes: window.SubmitForm.renderReview, .renderConfirmation, .exitReview,
- *          .copyText
+ *          .renderSubmitted, .copyText, .el
  */
 (function (ns) {
   'use strict';
@@ -43,6 +48,7 @@
     (children || []).forEach((child) => node.append(child));
     return node;
   }
+  ns.el = el;
 
   /**
    * Copy text to the clipboard.
@@ -120,11 +126,23 @@
     if (typeof ns.afterExitReview === 'function') ns.afterExitReview(form);
   };
 
-  /** The long "what happens next", cloned out of the Liquid-rendered template. */
-  function whatHappensNext() {
+  /**
+   * The long "what happens next", cloned out of the Liquid-rendered template.
+   * A site with "Sign in with GitHub" renders both versions of the first step
+   * there ([data-handoff-copy] and [data-direct-copy]); `direct` picks one.
+   * @param {boolean} direct
+   */
+  function whatHappensNext(direct) {
     const template = document.querySelector('[data-review-next]');
     if (!template || !template.content) return null;
-    return el('div', { class: 'border-t border-brand-line px-6 py-5' }, [template.content.cloneNode(true)]);
+    const content = template.content.cloneNode(true);
+    content.querySelectorAll('[data-handoff-copy]').forEach((node) => {
+      node.hidden = direct;
+    });
+    content.querySelectorAll('[data-direct-copy]').forEach((node) => {
+      node.hidden = !direct;
+    });
+    return el('div', { class: 'border-t border-brand-line px-6 py-5' }, [content]);
   }
 
   /** The note on following the submission once it is sent, when the page has one. */
@@ -207,10 +225,16 @@
    *
    * @param {HTMLFormElement} form
    * @param {object[]} fields descriptors from readFields
-   * @param {{onSend: () => void, onBack: () => void, sendLabel?: string}} handlers
-   *   `onSend` hands the answers to GitHub; `onBack` returns to the questions.
+   * @param {{onSend: (button: HTMLButtonElement) => void, onBack: () => void, sendLabel?: string,
+   *   direct?: {login: string}|null}} handlers ('' login when GitHub could not be asked)
+   *   `onSend` hands the answers to GitHub, given the send button so it can
+   *   hold it while a request is out; `onBack` returns to the questions.
    *   `sendLabel` renames the send button — a site with no repository behind it
    *   has nothing to send to, and gets the copy-out route under its own name.
+   *   `direct` is set when the submitter is signed in through "Sign in with
+   *   GitHub": every answer travels, so the "will not travel" block and the
+   *   sign-in warning give way to who the issue will be filed as, and a
+   *   [data-review-status] region is added for the outcome of the request.
    */
   ns.renderReview = function renderReview(form, fields, handlers) {
     const host = panelHost(form);
@@ -228,6 +252,7 @@
       text: 'Check your answers',
     });
     const answered = fields.filter((field) => ns.serialize(field)).length;
+    const direct = handlers && handlers.direct ? handlers.direct : null;
 
     const groups = sections.map((section, index) => {
       const key = section.dataset.section;
@@ -261,6 +286,15 @@
       ]);
     });
 
+    const sendButton = el('button', {
+      type: 'button',
+      class: 'btn-primary',
+      text: (handlers && handlers.sendLabel) || (direct ? 'Submit to GitHub' : 'Send to GitHub'),
+    });
+    sendButton.addEventListener('click', () => {
+      if (handlers && handlers.onSend) handlers.onSend(sendButton);
+    });
+
     const panel = el('div', { class: 'space-y-6' }, [
       el('div', {}, [
         el('p', { class: 'eyebrow', text: 'Last step' }),
@@ -275,17 +309,43 @@
         }),
       ]),
       ...groups,
-      ...[unprefillableBlock(fields)].filter(Boolean),
-      el('div', { class: 'card' }, [whatHappensNext()].filter(Boolean)),
+      ...[direct ? null : unprefillableBlock(fields)].filter(Boolean),
+      el('div', { class: 'card' }, [whatHappensNext(Boolean(direct))].filter(Boolean)),
+      // GitHub can drop a prefill on its sign-in page, so a signed-out
+      // submitter may land on an empty form. The intro says so at length
+      // (submit/index.md); this is the reminder at the moment it matters.
+      // Only a site with a repository sends anyone to GitHub. Signed in here,
+      // nothing goes through that page: say who the issue will be filed as.
+      ...(direct
+        ? [
+            el('p', {
+              class: 'text-sm text-brand-muted',
+              text:
+                (direct.login ? 'Signed in to GitHub as @' + direct.login : 'Signed in to GitHub') +
+                '. Submitting creates your issue on GitHub straight away — there is no second form.',
+            }),
+          ]
+        : form.dataset.repo
+          ? [
+              el('p', {
+                class: 'text-sm text-brand-muted',
+                text: 'Not signed in to GitHub? Sign in first — GitHub can drop your answers on the way through sign-in.',
+              }),
+            ]
+          : []),
+      ...(direct
+        ? [
+            el('div', {
+              class:
+                'space-y-3 rounded-lg border border-brand-line bg-surface-base p-4 text-sm text-brand-ink',
+              role: 'alert',
+              'data-review-status': true,
+              hidden: true,
+            }),
+          ]
+        : []),
       el('div', { class: 'flex flex-wrap items-center gap-3' }, [
-        el('button', {
-          type: 'button',
-          class: 'btn-primary',
-          text: (handlers && handlers.sendLabel) || 'Send to GitHub',
-          onclick: () => {
-            if (handlers && handlers.onSend) handlers.onSend();
-          },
-        }),
+        sendButton,
         el('button', {
           type: 'button',
           class: 'btn-secondary',
@@ -303,17 +363,55 @@
   };
 
   /**
+   * The success moment: a check that draws itself in. Decorative — the
+   * heading carries the meaning — and the reduced-motion blanket rule in
+   * base.css snaps the stroke straight to its drawn state.
+   * @returns {HTMLElement}
+   */
+  function successBadge() {
+    const svgNs = 'http://www.w3.org/2000/svg';
+    const checkSvg = document.createElementNS(svgNs, 'svg');
+    checkSvg.setAttribute('viewBox', '0 0 24 24');
+    checkSvg.setAttribute('fill', 'none');
+    checkSvg.setAttribute('stroke', 'currentColor');
+    const checkPath = document.createElementNS(svgNs, 'path');
+    checkPath.setAttribute('class', 'confirm-check-path');
+    checkPath.setAttribute('stroke-linecap', 'round');
+    checkPath.setAttribute('stroke-linejoin', 'round');
+    checkPath.setAttribute('d', 'm4.5 12.75 6 6 9-13.5');
+    checkSvg.append(checkPath);
+    return el('div', { class: 'confirm-check', 'aria-hidden': 'true' }, [checkSvg]);
+  }
+
+  /**
+   * Show a finished panel in place of the form, and focus its heading.
+   * @param {HTMLFormElement} form
+   * @param {HTMLElement} panel
+   * @param {HTMLElement} heading
+   */
+  function showPanel(form, panel, heading) {
+    setFormVisible(form, false);
+    const host = panelHost(form);
+    host.textContent = '';
+    host.append(panel);
+    host.hidden = false;
+    heading.focus();
+  }
+
+  /**
    * Render the panel shown once the answers have been handed to GitHub.
    *
    * The submission is not finished at this point and the copy has to say so —
    * the issue is a draft in another tab until `Submit new issue` is pressed.
    * The draft therefore stays in this browser: it is deleted from here, on
-   * purpose, rather than the moment the tab opened.
+   * purpose, rather than the moment the tab opened. When the answers could
+   * not be saved, the panel says so instead and offers nothing to delete.
    *
    * @param {HTMLFormElement} form
    * @param {object[]} fields
-   * @param {{url: string, email: string, subject: string, body: string, onDelete: () => void}} options
-   *   `url` is the prefilled issue link, kept so the tab can be reopened.
+   * @param {{url: string, email: string, subject: string, body: string, saved: boolean, onDelete: () => void}} options
+   *   `url` is the prefilled issue link, kept so the tab can be reopened;
+   *   `saved` whether the answers really are in this browser's draft.
    */
   ns.renderConfirmation = function renderConfirmation(form, fields, options) {
     const host = panelHost(form);
@@ -349,21 +447,7 @@
       text: 'Almost there — finish on GitHub',
     });
 
-    // The success moment: a check that draws itself in. Decorative — the
-    // heading carries the meaning — and the reduced-motion blanket rule in
-    // base.css snaps the stroke straight to its drawn state.
-    const svgNs = 'http://www.w3.org/2000/svg';
-    const checkSvg = document.createElementNS(svgNs, 'svg');
-    checkSvg.setAttribute('viewBox', '0 0 24 24');
-    checkSvg.setAttribute('fill', 'none');
-    checkSvg.setAttribute('stroke', 'currentColor');
-    const checkPath = document.createElementNS(svgNs, 'path');
-    checkPath.setAttribute('class', 'confirm-check-path');
-    checkPath.setAttribute('stroke-linecap', 'round');
-    checkPath.setAttribute('stroke-linejoin', 'round');
-    checkPath.setAttribute('d', 'm4.5 12.75 6 6 9-13.5');
-    checkSvg.append(checkPath);
-    const badge = el('div', { class: 'confirm-check', 'aria-hidden': 'true' }, [checkSvg]);
+    const badge = successBadge();
 
     const panel = el('div', { class: 'card' }, [
       el('div', { class: 'card-header flex items-start gap-4' }, [
@@ -378,26 +462,101 @@
       ]),
       el('div', { class: 'flex flex-wrap items-center gap-3 px-6 py-5' }, actions),
       ...[afterSubmit()].filter(Boolean),
+      // Promise a saved draft only when there is one. Otherwise this tab is
+      // the only copy, so there is nothing to delete — and clearing the form
+      // before the issue is filed would lose it.
+      el(
+        'div',
+        { class: 'border-t border-brand-line px-6 py-4' },
+        settings.saved
+          ? [
+              el('p', {
+                class: 'text-sm text-brand-muted',
+                text: 'Your answers are still saved in this browser, in case that tab goes missing.',
+              }),
+              el('button', {
+                type: 'button',
+                class: 'btn-ghost btn-sm mt-2',
+                text: 'Submitted it? Delete the saved draft',
+                onclick: () => {
+                  if (settings.onDelete) settings.onDelete();
+                },
+              }),
+            ]
+          : [
+              el('p', {
+                class: 'text-sm text-brand-ink',
+                text: 'Your answers could not be saved on this device, so keep this tab open until the issue is submitted. If the GitHub tab goes missing, reopen it or copy your answers from here.',
+              }),
+            ]
+      ),
+    ]);
+
+    showPanel(form, panel, heading);
+  };
+
+  /**
+   * Render the panel shown once "Sign in with GitHub" has created the issue
+   * (assets/js/submit/direct.js). Unlike the hand-off, this is the end of the
+   * submission: GitHub answered 201, and the saved draft is already deleted.
+   *
+   * @param {HTMLFormElement} form
+   * @param {{number: number|null, url: string}} issue as GitHub returned it
+   *   (no number when GitHub's answer lacked one: the link is then the
+   *   submitter's own issues)
+   * @param {string[]} [fileLabels] labels of the form's `file` questions:
+   *   nothing can be attached from this page, so the panel says where to
+   */
+  ns.renderSubmitted = function renderSubmitted(form, issue, fileLabels) {
+    if (!panelHost(form)) return;
+    const named = issue.number ? 'issue #' + issue.number : 'an issue';
+    const heading = el('h2', {
+      class: 'section-title',
+      id: 'review-heading',
+      tabindex: '-1',
+      text: 'Submitted — thank you',
+    });
+    const panel = el('div', { class: 'card' }, [
+      el('div', { class: 'card-header flex items-start gap-4' }, [
+        successBadge(),
+        el('div', { class: 'min-w-0' }, [
+          heading,
+          el('p', {
+            class: 'section-lead mt-1',
+            text: 'Your submission is on GitHub as ' + named + '. There is nothing more to do here.',
+          }),
+        ]),
+      ]),
+      el('div', { class: 'flex flex-wrap items-center gap-3 px-6 py-5' }, [
+        el('a', {
+          class: 'btn-primary',
+          href: issue.url,
+          target: '_blank',
+          rel: 'noopener',
+          text: issue.number ? 'View #' + issue.number + ' on GitHub' : 'View your issues on GitHub',
+        }),
+      ]),
+      ...(fileLabels && fileLabels.length
+        ? [
+            el('div', { class: 'border-t border-brand-line px-6 py-4' }, [
+              el('p', {
+                class: 'text-sm text-brand-ink',
+                text:
+                  'Files cannot be sent from this page. To add one, open the issue on GitHub, edit it, and drag the file in under “' +
+                  fileLabels.join('” or “') +
+                  '”.',
+              }),
+            ]),
+          ]
+        : []),
+      ...[afterSubmit()].filter(Boolean),
       el('div', { class: 'border-t border-brand-line px-6 py-4' }, [
         el('p', {
           class: 'text-sm text-brand-muted',
-          text: 'Your answers are still saved in this browser, in case that tab goes missing.',
-        }),
-        el('button', {
-          type: 'button',
-          class: 'btn-ghost btn-sm mt-2',
-          text: 'Submitted it? Delete the saved draft',
-          onclick: () => {
-            if (settings.onDelete) settings.onDelete();
-          },
+          text: 'Your saved draft has been deleted from this browser, now that GitHub has your answers.',
         }),
       ]),
     ]);
-
-    setFormVisible(form, false);
-    host.textContent = '';
-    host.append(panel);
-    host.hidden = false;
-    heading.focus();
+    showPanel(form, panel, heading);
   };
 })((window.SubmitForm = window.SubmitForm || {}));

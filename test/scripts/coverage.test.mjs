@@ -6,7 +6,7 @@ import { COVERAGE_GROUPS, coverageArguments, parseCoverageSummary } from '../../
 test('coverage groups include explicit security-parser and updater expectations', () => {
   assert.deepEqual(
     COVERAGE_GROUPS.map((group) => group.id),
-    ['full', 'security-parsers', 'updater-workflows']
+    ['full', 'signin-service', 'security-parsers', 'updater-workflows']
   );
   for (const group of COVERAGE_GROUPS) {
     assert.ok(group.thresholds.lines > 0);
@@ -27,6 +27,11 @@ test('coverage arguments use the pinned Node runner and exclude test implementat
   const full = coverageArguments(COVERAGE_GROUPS.find(({ id }) => id === 'full'));
   assert.ok(full.includes('--test-coverage-include=assets/js/**/*.js'));
   assert.ok(full.includes('--test-coverage-include=scripts/**/*.mjs'));
+  assert.ok(full.includes('--test-coverage-include=services/*/lib/**/*.mjs'));
+
+  const signin = coverageArguments(COVERAGE_GROUPS.find(({ id }) => id === 'signin-service'));
+  assert.ok(signin.includes('--test-coverage-include=services/github-signin/lib/**/*.mjs'));
+  assert.ok(signin.includes('services/github-signin/test/signin.test.mjs'));
 });
 
 test('coverage summary parsing returns line, branch, and function evidence', () => {

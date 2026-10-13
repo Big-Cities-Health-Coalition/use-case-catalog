@@ -8,6 +8,80 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.10] — 2026-10-13
+
+Tenth candidate. rc.9 failed closed in BCHC on three new tests that read the
+deployment's own schema and `site.yml` (nothing was published). This candidate
+fixes those tests (#112) and otherwise carries rc.9 unchanged.
+
+### Fixed
+
+- Three tests added in rc.9 failed inside a real deployment's PHCT update,
+  which runs the template's suite on the deployment's own files.
+  `direct_issue_body.test.mjs` drove the template's `/submit/` snapshot but
+  compared against the repository's own issue template and ran the scaffolder
+  on its own `_data/schema.yml`, so a deployment that relabels a question
+  (BCHC's "Role of AI" for "How AI is involved") failed it. It now generates the
+  issue form and the scaffolder's schema from the snapshot's own questions, the
+  way `submit_form.test.mjs` already did. The byte-for-byte check on the
+  repository's own schema stays in `test/build/variants.test.mjs`.
+  `signin_url.test.mjs` required `_data/site.yml` to carry a blank
+  `submit.signin_url`, which a deployment's own `site.yml` need not have; it now
+  sets the key itself. The submit page and its issue body were not at fault.
+
+## [1.11.0-rc.9] — 2026-10-13
+
+Ninth candidate. rc.8's live BCHC update passed and deployed. This candidate
+keeps submitters' answers safe on `/submit/` (#109) and adds an optional
+*Sign in with GitHub* that submits directly (#110).
+
+### Added
+
+- Optional **Sign in with GitHub, submit directly** on `/submit/`. Set
+  `submit.signin_url` in `_data/site.yml` to the address of a small sign-in
+  service deployed from the new `services/github-signin/` (a GitHub App's web
+  flow with PKCE, finished on Vercel; see its README). A signed-in submitter's
+  *Submit to GitHub* then creates the issue through GitHub's API, as them,
+  however long the answers are, with exactly the body GitHub's issue form
+  would have written; the saved draft is deleted only once GitHub confirms the
+  issue. The token stays in that tab's `sessionStorage` and goes only to
+  `api.github.com`. Anyone not signed in keeps the link hand-off, which is also
+  offered whenever a direct send fails. File questions cannot be sent this way;
+  the page says how to add a file to the new issue. A new `claim` job in
+  `new-entry.yml` labels these issues when they open or are edited (GitHub
+  drops API labels from anyone without push access) so the scaffold job drafts
+  the pull request as usual, and `missing-label.yml` leaves them alone. Every
+  page on an allowed origin is trusted with the token, so on a shared
+  `<owner>.github.io` origin read the README's origin section first.
+  `npm run validate` checks the address. Blank (the default) leaves the page
+  exactly as it was.
+
+### Fixed
+
+- `/submit/` did not warn that a signed-out submitter can lose every answer
+  on the way to GitHub: GitHub keeps a prefilled issue link through its
+  sign-in page only up to about 5,400 characters. The page now asks submitters
+  to sign in to GitHub before the first question, with a link to GitHub's
+  sign-in page that opens in a new tab, and repeats it in one line beside
+  *Send to GitHub*.
+- Typing while the "You have an unfinished draft" bar was still showing was
+  never saved. The first edit now moves the old draft aside (to
+  `<draft key>:previous`) and saves the new work as usual; the bar stays up,
+  and *Restore it* brings the old draft back. Coming back later picks up the
+  new work in the form and still offers the old draft; neither is replaced
+  without the submitter choosing it. When the browser has no room for both, the
+  old draft stays where it was and the page says the new answers were not saved.
+- Answers typed in the half second before leaving the page were lost: the draft
+  is now saved when the page is hidden or closed, and the browser asks before
+  leaving only when the answers could not be saved at all.
+- *Submitted it? Delete the saved draft* saved the still-filled form again half
+  a second later. Deleting now holds autosave until the next edit.
+- The "Almost there" panel always said the answers were still saved in this
+  browser, even when saving had failed. It now says so only when they are;
+  otherwise it says they could not be saved on this device, asks the submitter
+  to keep the tab open until the issue is submitted, and offers no *Delete the
+  saved draft* button.
+
 ## [1.11.0-rc.8] — 2026-10-12
 
 Eighth candidate. rc.7's live BCHC update passed and deployed. This candidate
@@ -1661,7 +1735,9 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.8...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.10...HEAD
+[1.11.0-rc.10]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.9...v1.11.0-rc.10
+[1.11.0-rc.9]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.8...v1.11.0-rc.9
 [1.11.0-rc.8]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.7...v1.11.0-rc.8
 [1.11.0-rc.7]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.6...v1.11.0-rc.7
 [1.11.0-rc.6]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.5...v1.11.0-rc.6

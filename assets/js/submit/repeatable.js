@@ -103,11 +103,21 @@
   };
 
   /**
+   * Announce a structural change (a row added or removed) the way typing
+   * announces itself: a bubbling `input` from the field. The form's own input
+   * handlers then treat it as the edit it is — assets/js/submit.js repaints
+   * and saves, and assets/js/submit/draft.js resumes autosave after a delete.
+   * @param {object} field
+   */
+  function announce(field) {
+    field.wrap.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /**
    * Wire every repeatable control in the form.
    * @param {object[]} fields descriptors from readFields
-   * @param {() => void} onChange called after any structural change
    */
-  ns.initRepeatables = function initRepeatables(fields, onChange) {
+  ns.initRepeatables = function initRepeatables(fields) {
     fields
       .filter((field) => field.type === 'links')
       .forEach((field) => {
@@ -124,7 +134,7 @@
             // renumber pass just wrote ("Link 3 label") is read on arrival.
             const first = row ? row.querySelector('input') : null;
             if (first) first.focus();
-            onChange();
+            announce(field);
           });
         }
 
@@ -138,7 +148,7 @@
           if (container && container.children.length === 0) addRow(field);
           renumber(field);
           if (add) add.focus();
-          onChange();
+          announce(field);
         });
       });
 

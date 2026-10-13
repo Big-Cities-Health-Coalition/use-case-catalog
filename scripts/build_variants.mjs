@@ -49,15 +49,16 @@ export const ROOT = process.env.BUILD_VARIANTS_ROOT
  *
  * `demoMessage` writes `demo_message` into the copy's site.yml, and
  * `submitFallbackEmail` writes `submit.fallback_email` (`false` is the off
- * switch, `''` falls through to `organization.contact_email`), and
- * `plausibleDomain` writes `analytics.plausible_domain`. `newestEntry`
+ * switch, `''` falls through to `organization.contact_email`),
+ * `plausibleDomain` writes `analytics.plausible_domain`, and `submitSigninUrl`
+ * writes `submit.signin_url` ("Sign in with GitHub" on /submit/). `newestEntry`
  * edits the entry that sorts first (newest `published`): `stripMedia` drops its
  * pictures, so the catalog's first card has none, and `attachDeck` commits a
  * one-page PDF to its thumbnail `file` field with no thumb.jpg beside it.
  *
  * @type {{id: string, preset: string|null, modules: object|null, demo?: boolean, themeFonts?: object,
  *         githubBranch?: string, demoMessage?: string, submitFallbackEmail?: string|false,
- *         plausibleDomain?: string,
+ *         plausibleDomain?: string, submitSigninUrl?: string,
  *         newestEntry?: {stripMedia?: boolean, attachDeck?: boolean},
  *         legacyIssueChooser?: boolean,
  *         entries: 'keep'|'fixtures'|'none', build: boolean,
@@ -119,6 +120,7 @@ export const VARIANTS = [
     newestEntry: { stripMedia: true, attachDeck: true },
     submitFallbackEmail: 'submissions@example.org',
     plausibleDomain: 'catalog.example.org',
+    submitSigninUrl: 'https://catalog-signin.example.org',
     entries: 'keep',
     build: true,
     expectFrontMatter: 'pass',
@@ -126,7 +128,8 @@ export const VARIANTS = [
       'events, cohorts and resources are off in the shipped config, so their layouts never render in CI; ' +
       'it also carries a custom demo banner, a newest entry with no picture, an attached deck ' +
       'and its own submit.fallback_email, so the email route is tested whatever the shipped site.yml says; ' +
-      'analytics is on too, so the Plausible snippet renders somewhere the shipped (analytics off) build is not',
+      'analytics is on too, so the Plausible snippet renders somewhere the shipped (analytics off) build is not, ' +
+      'and so is "Sign in with GitHub" (submit.signin_url), which the shipped build leaves off',
   },
   ...['ai-use-cases', 'cohort-portal', 'resource-library', 'blank'].map((preset) => ({
     id: preset,
@@ -187,7 +190,10 @@ function timedRun(command, args, options) {
  * the key, as in a site.yml written before that module existed. Comments are not
  * preserved.
  */
-function patchSite(file, { modules, demo, githubBranch, demoMessage, submitFallbackEmail, plausibleDomain }) {
+function patchSite(
+  file,
+  { modules, demo, githubBranch, demoMessage, submitFallbackEmail, plausibleDomain, submitSigninUrl }
+) {
   const site = readYaml(file);
   if (modules) {
     site.modules = { ...(site.modules ?? {}), ...modules };
@@ -200,6 +206,7 @@ function patchSite(file, { modules, demo, githubBranch, demoMessage, submitFallb
     site.submit = { ...(site.submit ?? {}), fallback_email: submitFallbackEmail };
   }
   if (plausibleDomain) site.analytics = { ...(site.analytics ?? {}), plausible_domain: plausibleDomain };
+  if (submitSigninUrl) site.submit = { ...(site.submit ?? {}), signin_url: submitSigninUrl };
   writeYaml(file, site);
 }
 
@@ -309,7 +316,8 @@ export function buildVariant(variant, { scratchRoot, log = () => {} }) {
     variant.githubBranch ||
     variant.demoMessage ||
     variant.submitFallbackEmail !== undefined ||
-    variant.plausibleDomain
+    variant.plausibleDomain ||
+    variant.submitSigninUrl
   ) {
     patchSite(path.join(dir, '_data', 'site.yml'), variant);
   }

@@ -26,6 +26,8 @@ scripts:
 
   Data attributes read by assets/js/submit*.js:
     [data-submit-form]        the form; carries repo/template/copy configuration
+      data-signin-url         the "Sign in with GitHub" service, present only
+                              when `submit.signin_url` is set (see below)
     [data-field=<key>]        one field wrapper
       data-type               schema type
       data-required           "true" when an answer is needed
@@ -57,6 +59,11 @@ scripts:
     [data-after-submit]       <template> the confirmation panel shows: the issue
                               number, GitHub's emails and the status page
     [data-form-chrome]        parts of the form hidden while the review shows
+    [data-signin-notice]      the intro's sign-in notice; with sign-in on,
+                              assets/js/submit/direct.js puts its controls here
+    [data-handoff-copy]       with sign-in on only: copy for the link hand-off,
+    [data-direct-copy]        and its counterpart for a signed-in submitter —
+                              direct.js and review.js show one or the other
     [data-option-view=k__i]   <template> for option i of field k on the card
     [data-line-view=<key>]    <template> for a `card: line` field
       data-role               "title" / "summary" — the two reserved keys every
@@ -111,6 +118,18 @@ form says the same (assets/js/configurator/issue-template.js). {%- endcomment -%
 {%- assign gh_repo = cfg.github.repository | default: '' -%}
 
 {%- comment -%}
+  Optional "Sign in with GitHub": `submit.signin_url` is the address of the
+  small sign-in service the site owner deploys (services/github-signin/). With
+  it set, a submitter can sign in on this page and have the answers sent as an
+  issue straight from here (assets/js/submit/direct.js), however long they
+  are; the link hand-off stays for everyone else and as the way out when a
+  direct send fails. Unset — the default — and nothing below changes: no
+  attribute, no script, no extra copy. Needs a repository to send to.
+{%- endcomment -%}
+{%- assign signin_url = '' -%}
+{%- if gh_repo != '' -%}{%- assign signin_url = cfg.submit.signin_url | default: '' | strip -%}{%- endif -%}
+
+{%- comment -%}
   What a submitter should know once the issue exists: it has a number, GitHub
   emails them about it, and (when the `status` module is on) the status page
   looks it up. Shown as the last step of "what happens next" in the review
@@ -150,13 +169,23 @@ form says the same (assets/js/configurator/issue-template.js). {%- endcomment -%
   <span class="eyebrow">Contribute</span>
   <h1 class="page-title mt-2">Submit {{ singular | downcase | with_article }}</h1>
   <p class="mt-4 text-lg text-brand-muted">{{ cfg.submit.intro | default: 'Tell us about your work. Maintainers review every submission before it is published.' }}</p>
-  <p class="mt-3 text-sm text-brand-muted">Nothing is sent from this page. Your answers stay in this browser until you press a button.{% if gh_repo != '' %}{% if fallback_email != '' %} You'll need a free GitHub account — or use <em>Email it instead</em>.{% else %} You'll need a free GitHub account.{% endif %}{% endif %}</p>
+  <p class="mt-3 text-sm text-brand-muted">{% if signin_url != '' %}<span data-handoff-copy>{% endif %}Nothing is sent from this page.{% if signin_url != '' %}</span><span data-direct-copy hidden>Nothing is sent until you press <em>Submit to GitHub</em>.</span>{% endif %} Your answers stay in this browser until you press a button.{% if gh_repo != '' %}{% if fallback_email != '' %} You'll need a free GitHub account — or use <em>Email it instead</em>.{% else %} You'll need a free GitHub account.{% endif %}{% endif %}</p>
   {%- if gh_repo != '' -%}
   <ol class="mt-4 space-y-1 text-sm text-brand-muted" data-form-chrome>
     <li><strong class="text-brand-ink">1.</strong> Answer the questions below.</li>
     <li><strong class="text-brand-ink">2.</strong> Check your answers, then send them to GitHub.</li>
-    <li><strong class="text-brand-ink">3.</strong> Press <em>Submit new issue</em> on GitHub — that is what actually submits it.</li>
+    <li><strong class="text-brand-ink">3.</strong> {% if signin_url != '' %}<span data-handoff-copy>{% endif %}Press <em>Submit new issue</em> on GitHub — that is what actually submits it.{% if signin_url != '' %}</span><span data-direct-copy hidden>Press <em>Submit to GitHub</em> — that sends it, as you, in one step.</span>{% endif %}</li>
   </ol>
+  {%- comment -%}
+    Before any question: GitHub keeps a prefilled issue through its sign-in
+    page only for a short link, so a submitter who signs in on the way can land
+    on an empty form. Signing in first, in another tab, avoids it. The review
+    panel repeats this in one line beside the send button
+    (assets/js/submit/review.js).
+  {%- endcomment -%}
+  <p class="mt-4 flex items-start gap-1.5 rounded-lg border border-brand-line bg-surface-base p-4 text-sm text-brand-ink" data-form-chrome data-signin-notice>
+    {% include icon.html name='warning' size='sm' class='mt-0.5 shrink-0' %}<span><strong>Sign in to GitHub before you start.</strong> If you are not signed in when you send, GitHub can drop your answers on the way through its sign-in page. <a class="font-medium text-brand-primary underline underline-offset-2 hover:no-underline" href="https://github.com/login" target="_blank" rel="noopener">Sign in to GitHub</a> (opens in a new tab), then come back here.</span>
+  </p>
   {%- else -%}
   <p class="mt-4 flex items-start gap-1.5 rounded-lg border border-brand-line bg-surface-base p-4 text-sm text-brand-ink" data-form-chrome>
     {% include icon.html name='warning' size='sm' class='mt-0.5 shrink-0' %}<span>This site has no catalog repository behind it, so nothing here can be submitted. The questions, the card preview and the copy buttons all work — the last step, which on a published catalog opens a prefilled GitHub issue for a maintainer to review, has nowhere to go{% if fallback_email != '' %}, so <em>Email it instead</em> is the way out of this page{% endif %}.</span>
@@ -276,7 +305,8 @@ form says the same (assets/js/configurator/issue-template.js). {%- endcomment -%
         data-singular="{{ singular }}"
         data-entry-path="{{ schema.entry.path | default: 'catalog' }}"
         data-draft-key="{{ cfg.name | default: 'catalog' | slugify }}"
-        data-section-count="{{ form_groups.size }}">
+        data-section-count="{{ form_groups.size }}"{% if signin_url != '' %}
+        data-signin-url="{{ signin_url | escape }}"{% endif %}>
 
     <input type="hidden" name="template" value="new-entry.yml">
 
@@ -562,7 +592,7 @@ form says the same (assets/js/configurator/issue-template.js). {%- endcomment -%
     <p class="font-semibold text-brand-ink">What happens next</p>
     <ol class="mt-2 space-y-1.5 text-sm text-brand-muted">
       {%- if gh_repo != '' %}
-      <li>1. Sending opens a GitHub issue with your answers already filled in. Nothing is submitted until you press <em>Submit new issue</em> there.</li>
+      <li>1. {% if signin_url != '' %}<span data-handoff-copy>{% endif %}Sending opens a GitHub issue with your answers already filled in. Nothing is submitted until you press <em>Submit new issue</em> there.{% if signin_url != '' %}</span><span data-direct-copy hidden>Submitting creates a GitHub issue with your answers, filed as you, straight away.</span>{% endif %}</li>
       {%- else %}
       <li>1. On a published catalog this is where your answers open a prefilled GitHub issue. This site has no repository behind it, so the button hands you the text instead.</li>
       {%- endif %}
@@ -615,4 +645,8 @@ form says the same (assets/js/configurator/issue-template.js). {%- endcomment -%
   {%- comment -%}One trailing "+n" for the signal strip, matching the card's cap of four items in total.{%- endcomment -%}
   <template data-signal-overflow><span class="signal" data-overflow-text></span></template>
 </div>
+{%- if signin_url != '' %}
+{%- comment -%} Before the front-matter scripts, which run in document order after it: it only defines window.SubmitForm.initDirect, which assets/js/submit.js calls. {%- endcomment %}
+<script defer src="{{ '/assets/js/submit/direct.js' | relative_url }}"></script>
+{%- endif -%}
 {%- endif -%}

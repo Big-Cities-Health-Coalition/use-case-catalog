@@ -19,6 +19,7 @@ import * as yaml from 'js-yaml';
 
 import { VARIANTS, buildVariants, preflight } from '../../scripts/build_variants.mjs';
 import { checkRenderedCopy, entryNoun, formatFindings } from '../../scripts/check_rendered_copy.mjs';
+import { fillEveryField, githubFormBody } from '../helpers/issue_form.mjs';
 
 const ENABLED = process.env.RUN_BUILD_TESTS === '1';
 const ready = ENABLED ? preflight() : { ok: false, reason: 'set RUN_BUILD_TESTS=1 (`npm run test:build`)' };
@@ -912,6 +913,30 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
     }
   );
 
+  test(
+    'shipped: /submit/ asks submitters to sign in to GitHub before the first question',
+    { skip: needs('shipped') },
+    () => {
+      const { siteDir } = built.get('shipped');
+      const main = page(siteDir, 'submit').querySelector('main');
+      const notice = main.querySelector('[data-signin-notice]');
+      assert.ok(notice, 'the submit page has no sign-in notice');
+      assert.match(notice.textContent, /Sign in to GitHub before you start\./);
+      assert.match(notice.textContent, /GitHub can drop your answers on the way through its sign-in page/);
+      const link = notice.querySelector('a[href="https://github.com/login"]');
+      assert.ok(link, 'the notice does not link to GitHub sign-in');
+      assert.equal(link.getAttribute('target'), '_blank');
+      assert.equal(link.getAttribute('rel'), 'noopener');
+      // Before any question, so it is read before the work it protects.
+      const firstQuestion = main.querySelector('[data-field]');
+      assert.ok(
+        notice.compareDocumentPosition(firstQuestion) &
+          notice.ownerDocument.defaultView.Node.DOCUMENT_POSITION_FOLLOWING,
+        'the sign-in notice comes after a question'
+      );
+    }
+  );
+
   /* ------------------------------------------------- the email submission route */
 
   /** Every email route /submit/ offers, read off <main> (templates and <noscript> included). */
@@ -1052,4 +1077,116 @@ describe('preset build matrix', { skip: ready.ok ? false : ready.reason, concurr
       }
     }
   );
+
+  /* ------------------------------------------ "Sign in with GitHub" (submit.signin_url) */
+
+  /**
+   * What a variant's /submit/ renders for "Sign in with GitHub", or null when
+   * the page has no form (module off, intake paused).
+   */
+  function signinWiring(siteDir) {
+    const file = path.join(siteDir, 'submit', 'index.html');
+    if (!fs.existsSync(file)) return null;
+    const html = fs.readFileSync(file, 'utf8');
+    const doc = new JSDOM(html).window.document;
+    const form = doc.querySelector('form[data-submit-form]');
+    if (!form) return null;
+    const scripts = Array.from(doc.querySelectorAll('script[src]')).map((node) => node.getAttribute('src'));
+    return {
+      html,
+      doc,
+      url: form.getAttribute('data-signin-url'),
+      repo: form.getAttribute('data-repo'),
+      scripts,
+      direct: scripts.filter((src) => /\/assets\/js\/submit\/direct\.js$/.test(src)),
+    };
+  }
+
+  for (const variant of variants.filter((v) => v.build)) {
+    test(`${variant.id}: /submit/ renders "Sign in with GitHub" exactly when site.yml sets submit.signin_url`, () => {
+      const { dir, siteDir } = built.get(variant.id);
+      // The sign-in service is deployed on its own; its source is not part of the site.
+      assert.equal(
+        fs.existsSync(path.join(siteDir, 'services')),
+        false,
+        'services/ was published with the site'
+      );
+      const wiring = signinWiring(siteDir);
+      if (!wiring) return;
+      const site = yaml.load(fs.readFileSync(path.join(dir, '_data', 'site.yml'), 'utf8'));
+      const configured = String(site.submit?.signin_url ?? '').trim() !== '' && wiring.repo !== '';
+      if (!configured) {
+        // Unset changes nothing: no attribute, no script, no second copy.
+        assert.equal(wiring.url, null, 'data-signin-url rendered with sign-in off');
+        assert.deepEqual(wiring.direct, [], 'direct.js loaded with sign-in off');
+        assert.doesNotMatch(wiring.html, /data-(signin-url|direct-copy|handoff-copy|direct-action)/);
+        return;
+      }
+      assert.equal(wiring.url, String(site.submit.signin_url).trim());
+      assert.equal(wiring.direct.length, 1, 'direct.js is not loaded exactly once');
+      // Before the front-matter scripts, so submit.js finds initDirect at boot.
+      const directAt = wiring.scripts.indexOf(wiring.direct[0]);
+      const submitAt = wiring.scripts.findIndex((src) => /\/assets\/js\/submit\.js$/.test(src));
+      assert.ok(directAt >= 0 && directAt < submitAt, 'direct.js runs after submit.js');
+      assert.ok(
+        wiring.doc.querySelector('[data-signin-notice]'),
+        'no sign-in notice for direct.js to take over'
+      );
+      assert.ok(wiring.doc.querySelector('ol [data-direct-copy][hidden]'), 'the intro has no signed-in step');
+      // "Nothing is sent from this page" is not true of a signed-in submitter.
+      const promise = [...wiring.doc.querySelectorAll('p')].find((p) =>
+        p.textContent.includes('Nothing is sent')
+      );
+      assert.ok(
+        promise?.querySelector('[data-handoff-copy]'),
+        'the intro promises nothing is sent from the page'
+      );
+      assert.match(
+        promise.querySelector('[data-direct-copy][hidden]')?.textContent ?? '',
+        /Submit to GitHub/
+      );
+      const next = wiring.doc.querySelector('template[data-review-next]').content;
+      assert.ok(next.querySelector('[data-handoff-copy]') && next.querySelector('[data-direct-copy]'));
+    });
+
+    // The body "Sign in with GitHub" sends must be the one GitHub's form
+    // writes for the same answers — on every preset's own schema, from the
+    // page Jekyll actually built and the form generate.mjs actually wrote.
+    test(`${variant.id}: the direct issue body is GitHub's form body for the same answers, byte for byte`, async () => {
+      const { dir, siteDir } = built.get(variant.id);
+      const wiring = signinWiring(siteDir);
+      if (!wiring) return;
+      const dom = new JSDOM(wiring.html, { url: 'https://example.org/submit/', runScripts: 'outside-only' });
+      try {
+        const { window } = dom;
+        await new Promise((resolve) => {
+          if (window.document.readyState === 'complete') resolve();
+          else window.addEventListener('load', resolve);
+        });
+        const scripts = yaml
+          .load(fs.readFileSync(path.join(dir, 'submit', 'index.md'), 'utf8').split(/^---$/m)[1])
+          .scripts.map((src) => src.replace(/^\//, ''));
+        scripts.forEach((rel) => window.eval(fs.readFileSync(path.join(dir, rel), 'utf8')));
+        const form = window.document.querySelector('[data-submit-form]');
+        const title = fillEveryField(window, form);
+        const ns = window.SubmitForm;
+        const fields = ns.readFields(form);
+        // Without a title question GitHub's form asks for the title itself,
+        // and submit.js keeps such a page on the link hand-off.
+        if (!fields.some((field) => field.key === 'title')) return;
+        const params = new URL(ns.issueUrl(form, fields, title)).searchParams;
+        const template = yaml.load(
+          fs.readFileSync(path.join(dir, '.github', 'ISSUE_TEMPLATE', 'new-entry.yml'), 'utf8')
+        );
+        // An `image` question is left blank by fillEveryField: its address is
+        // sent directly but is an upload on GitHub, which no link can fill.
+        assert.equal(
+          ns.issueFormBody(fields),
+          githubFormBody(template, (id) => params.get(id) ?? '')
+        );
+      } finally {
+        dom.window.close();
+      }
+    });
+  }
 });

@@ -17,7 +17,7 @@
  * assets/js/configurator/issue-form-ids.js, the same helper the generator
  * names the form's elements with.
  *
- * Exposes: window.SubmitForm.issueUrl, .markdownBody, .yamlFrontMatter,
+ * Exposes: window.SubmitForm.issueUrl, .markdownBody, .issueFormBody, .yamlFrontMatter,
  *          .mailtoUrl, .unprefillable
  */
 (function (ns, issueFormId) {
@@ -72,6 +72,23 @@
     return answered(fields)
       .map((entry) => '### ' + entry.field.label + '\n\n' + entry.text + '\n')
       .join('\n');
+  };
+
+  /**
+   * The issue body exactly as GitHub's issue form writes it for the same
+   * answers: every question in form order, `### <Label>`, a blank line, the
+   * answer, and `_No response_` for one left blank. What "Sign in with GitHub"
+   * sends (assets/js/submit/direct.js), so an issue created from this page
+   * reads, and parses, the same as one filed through the form. An `image`
+   * question is an upload on GitHub; here its address is carried as typed,
+   * which the scaffolder reads as an image link.
+   * @param {object[]} fields
+   * @returns {string}
+   */
+  ns.issueFormBody = function issueFormBody(fields) {
+    return fields
+      .map((field) => '### ' + field.label + '\n\n' + (ns.serialize(field) || '_No response_'))
+      .join('\n\n');
   };
 
   /**

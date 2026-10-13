@@ -21,6 +21,11 @@ name: Missing content label
 # Outside submissions also get `status:received`, which the /status/ page
 # reads. The wording lives in scripts/lib/notify.mjs.
 #
+# An entry submission sent from /submit/ through "Sign in with GitHub" also
+# arrives unlabelled (GitHub drops the labels of an API request from anyone
+# without push access); new-entry.yml's `claim` job labels it and says so
+# itself if it cannot, so it is left alone here.
+#
 # It reads the title, the body's shape and the label list, comments at most
 # once, and never writes to the repository.
 
@@ -70,7 +75,13 @@ jobs:
           script: |
             const { pathToFileURL } = require('node:url');
             const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
+            const direct = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/direct_submission.mjs`).href);
             const title = String(process.env.ISSUE_TITLE || '');
+            const schema = direct.loadSchema(process.env.GITHUB_WORKSPACE);
+            if (direct.isEntrySubmission({ title, body: process.env.ISSUE_BODY, schema })) {
+              core.info(`"${title}" is an entry submission; new-entry.yml claims it.`);
+              return;
+            }
             const outsider = !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(process.env.AUTHOR_ASSOCIATION);
             // An issue-form submission renders each question as an `### `
             // heading. A hand-written issue does not, however form-like its
