@@ -1,4 +1,112 @@
 {
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/01.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 1198977,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/01",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/02.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 225215,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/02",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/03.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 138537,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/03",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/04.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 200763,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/04",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/05.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 188280,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/05",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/06.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 135513,
+    "base": "/catalog/austin-health-pulse-life-expectancy-explorer-by-zip-code/screenshots/06",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
   "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/01.png": {
     "w": 1440,
     "h": 900,
