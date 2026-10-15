@@ -142,5 +142,95 @@
         1280
       ]
     }
+  },
+  "/catalog/voice-intake-assistant-for-service-navigation/screenshots/01.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 106518,
+    "base": "/catalog/voice-intake-assistant-for-service-navigation/screenshots/01",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/voice-intake-assistant-for-service-navigation/screenshots/02.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 128243,
+    "base": "/catalog/voice-intake-assistant-for-service-navigation/screenshots/02",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/voice-intake-assistant-for-service-navigation/screenshots/03.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 169724,
+    "base": "/catalog/voice-intake-assistant-for-service-navigation/screenshots/03",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/voice-intake-assistant-for-service-navigation/screenshots/04.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 249895,
+    "base": "/catalog/voice-intake-assistant-for-service-navigation/screenshots/04",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/voice-intake-assistant-for-service-navigation/screenshots/05.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 130350,
+    "base": "/catalog/voice-intake-assistant-for-service-navigation/screenshots/05",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
   }
 }
