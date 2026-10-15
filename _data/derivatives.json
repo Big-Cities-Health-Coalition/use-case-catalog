@@ -1,1 +1,146 @@
-{}
+{
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/01.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 724212,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/01",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/02.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 151765,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/02",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/03.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 150153,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/03",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/04.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 134428,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/04",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/05.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 227529,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/05",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/06.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 1154196,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/06",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/07.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 172215,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/07",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  },
+  "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/08.png": {
+    "w": 1440,
+    "h": 900,
+    "src_bytes": 147639,
+    "base": "/catalog/austin-service-guide-ai-assisted-service-navigation/screenshots/08",
+    "variants": {
+      "avif": [
+        400,
+        800,
+        1280
+      ],
+      "webp": [
+        400,
+        800,
+        1280
+      ]
+    }
+  }
+}
