@@ -63,7 +63,7 @@ submitter_github: ""
 We need to link records across systems (and deduplicate within systems) all the time, so have built up various methodologies. However, a research grant needed to link data across 12 administrative data systems with over 6m unique identifiers, which was more than existing methods could handle efficiently. Therefore, we needed a new way to link records.
 
 ## Approach
-We build on some work being done at the state department of health to implement a machine learning-based linkage model. Key enhancements included adding a screener regression model that quickly classifies obvious matches and non-matches, flexibility in the variables used to match, and a network/cluster analysis to catch over-linked individuals.
+We built on some work being done at the state department of health to implement a machine learning-based linkage model. Key enhancements included adding a screener regression model that quickly classifies obvious matches and non-matches, flexibility in the variables used to match, and a network/cluster analysis to catch over-linked individuals.
 
 ## Time and resources
 The only cost for the work was staff time, which was paid for by the grant. The model can run on local laptops with no issues up to several million records.
