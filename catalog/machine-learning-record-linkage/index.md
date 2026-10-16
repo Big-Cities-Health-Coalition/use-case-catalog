@@ -4,6 +4,7 @@ render_with_liquid: false
 title: Machine learning record linkage
 slug: machine-learning-record-linkage
 published: "2026-10-05"
+updated: 2026-10-15
 featured: false
 thumbnail: ""
 organization: "Public Health – Seattle & King County"
