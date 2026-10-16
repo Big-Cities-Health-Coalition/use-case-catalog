@@ -65,6 +65,30 @@ By default anyone with a GitHub account can open a `content:new-entry` issue and
 
 If you need to close submissions for a while, add the repository variable `SUBMISSIONS_OPEN` ([where](#repository-settings-at-a-glance)) set to `false`. Every issue-driven workflow (entries, events, cohort years, schedules, attachments) then runs only for issues opened by the repository owner, an organization member or a collaborator. Delete the variable, or set it to anything else, to reopen. Nobody is stopped from opening the issue either way — it simply does not scaffold a pull request, so you can still triage by hand.
 
+## Direct submissions (Sign in with GitHub)
+
+Optional, and off by default. With `submit.signin_url` set in `_data/site.yml`
+([configuration.md → Submit form copy](configuration.md#submit-form-copy)), a submitter can sign in with GitHub on `/submit/` and *Submit to GitHub* creates the issue straight from the page, as them, however long the answers are. Everyone else keeps the prefilled-link hand-off. It needs a small sign-in service and a GitHub App with **Issues: read and write**, installed on the catalog repository only; [`services/github-signin/README.md`](../services/github-signin/README.md) walks through registering the app and deploying the service to Vercel (environment variables `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `ALLOWED_ORIGIN`).
+
+**Origin trust (read before turning it on).** The service hands a token to any page on an origin listed in `ALLOWED_ORIGIN`, and any page on that origin can read the token the submit page keeps. On GitHub Pages every project site of one account shares the origin `https://<owner>.github.io`, so allowing it lets every other Pages site of that owner, and anyone who can publish one, obtain a signed-in submitter's token, silently once the person has approved the app. The token can only do what the app can: read and write issues, as that person, in the repositories the app is installed on. Install the app on the catalog repository only, and either serve the catalog from a custom domain no one else publishes to (allowing only that origin) or allow the shared `github.io` origin only if you trust every Pages site that owner publishes. The [service README](../services/github-signin/README.md#every-page-on-your-sites-origin-is-trusted-with-the-token) has the detail.
+
+What changes for you:
+
+- **The issue opens without a label.** GitHub drops the labels of an API request from anyone without push access. The `claim` job in `new-entry.yml` (on `opened`, and on `edited` in case an early edit cancelled the opened run before it labelled the issue) recognises an entry submission by its shape — the form's `[<Singular>] ` title prefix and a `### <Label>` heading for every question, exactly what the issue form writes — adds `content:new-entry`, and the scaffold job drafts the pull request in the same run. `missing-label.yml` leaves these issues alone. If you take `content:new-entry` off such an issue to stop the automation, a later edit does not put it back. Review the pull request as usual: an issue that only looks like a submission gets no further than one anyone could file through the form, a draft pull request you have to merge.
+- **No files.** A direct submission cannot attach a file. The page tells the submitter to edit the new issue and drag the file in under its question; that edit re-runs the scaffold job, which picks the file up.
+- **If the label cannot be added** (most often because **Bootstrap labels** was never run), the claim job posts the usual "label missing" comment and, for an outside submitter, adds `needs-triage`. Run Bootstrap labels, then add `content:new-entry` to the issue by hand.
+
+What submitters may report, and what it means:
+
+- *"Sign-in is not set up on this server yet"* in the sign-in window: an environment variable on the service is missing or malformed.
+- *"may not be installed"* (GitHub answered 403 or 404): the GitHub App is not installed on the catalog repository, or lacks Issues access.
+- *"Issues are turned off"* (410): the repository's Issues feature is disabled.
+- A sign-in window that closes without signing in, or never reports back: check that the app's callback URL is `<signin_url>/api/callback` and that `ALLOWED_ORIGIN` is the site's exact origin (scheme and host, no path).
+
+Every failure keeps the submitter's answers and offers the link hand-off instead, so nothing is lost while you fix it.
+
+To rotate the client secret or turn the feature off, see the README's *Rotate or remove*. Blanking `submit.signin_url` and publishing turns it off on the site at once; uninstall the GitHub App to revoke tokens already issued.
+
 ## Reviewing a submission
 
 The rules you are applying are published on the site's **Governance** page (`/governance/`, from `_data/governance.yml`, when the `governance` module is on): the review tiers and their turnaround targets, the five criteria, who does what, and the standing policies on privacy, licensing, data governance, accessibility, maintenance and appeals. Submitters are pointed at it from the Submit page and at [contributor-guide.md](contributor-guide.md), so what they were told to expect and what you check are the same list. If you change one, change the other.
@@ -528,6 +552,7 @@ All four cohort/event workflows follow the same pattern as new-entry: issue → 
 - Confirm the issue actually carries the expected label (`content:new-entry`, etc.) — GitHub only applies labels from an issue form if they already exist in the repo (see setup checklist above).
 - Check Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" is enabled — this is the most common cause of a silently-failed `create-pull-request` step.
 - Check the workflow run itself: on a scaffolding failure, `new-entry.yml` comments the error onto the issue and fails the job rather than opening an empty PR.
+- An issue sent with *Sign in with GitHub* opens without a label and is labelled by `new-entry.yml`'s `claim` job; if that job could not add it, see [Direct submissions](#direct-submissions-sign-in-with-github).
 
 **Checks on a generated pull request say "waiting for approval"**
 - Expected on a fresh repository, and not a failure: pull requests opened with the built-in token cannot start other workflows. Either click **Approve and run**, or read the **(dispatch)** commit statuses the workflow posted on the head commit (see [Checks on a generated pull request](#checks-on-a-generated-pull-request)).

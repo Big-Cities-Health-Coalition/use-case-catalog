@@ -2,8 +2,9 @@
  * The GitHub side of the submitter notifications (scripts/lib/notify_github.mjs),
  * against an in-memory stand-in for github-script's Octokit: comments at most
  * once, one status label at a time, the draft mention, closing a declined
- * submission, the held-edit hand-over, the "now live" announcement, and the
- * missing-label workflow's script run as written.
+ * submission, the held-edit hand-over, the "now live" announcement, the
+ * missing-label workflow's script run as written, and new-entry.yml's claim
+ * of an entry submission that arrived without its label.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,6 +24,12 @@ import {
   submitter,
 } from '../../scripts/lib/notify_github.mjs';
 import { ENTRY_LABEL, REVIEW_LABELS, STATUS, hasMarker, marker } from '../../scripts/lib/notify.mjs';
+import {
+  claimEntrySubmission,
+  entryIssueShape,
+  isEntrySubmission,
+  loadSchema,
+} from '../../scripts/lib/direct_submission.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OWNER = 'acme';
@@ -101,6 +108,11 @@ function fakeGitHub(seed = {}) {
         calls.push(['removeLabel', issue_number, name]);
         issue.labels = issue.labels.filter((l) => l.name !== name);
         return { data: {} };
+      },
+      listEvents: async ({ issue_number }) => {
+        failing('issues.listEvents');
+        find(issue_number);
+        return { data: seed.events?.[issue_number] ?? [] };
       },
       update: async ({ issue_number, state, state_reason }) => {
         calls.push(['update', issue_number, state, state_reason]);
@@ -789,6 +801,206 @@ test('missing-label: a site-problem report is acknowledged and left for triage, 
 test("missing-label: a maintainer's own issue gets no comment at all", async () => {
   const github = await runMissingLabel({ title: 'Plan the next release', association: 'MEMBER' });
   assert.deepEqual(github.calls, []);
+});
+
+/** The entry form's body as GitHub renders it, every question answered blank. */
+function entryFormBody() {
+  const form = YAML.parse(fs.readFileSync(path.join(ROOT, '.github/ISSUE_TEMPLATE/new-entry.yml'), 'utf8'));
+  return {
+    title: `${form.title}Water routing`,
+    body: form.body
+      .filter((element) => element.type !== 'markdown')
+      .map((element) => `### ${element.attributes.label}\n\n_No response_`)
+      .join('\n\n'),
+  };
+}
+
+test('missing-label: an entry submission sent through "Sign in with GitHub" is left to new-entry.yml', async () => {
+  const { title, body } = entryFormBody();
+  const github = await runMissingLabel({ title, body });
+  assert.deepEqual(
+    github.calls,
+    [],
+    'the claim job labels it; a "label missing" comment here would be wrong'
+  );
+  // Missing a single question's heading, it is not the form's, and the rescue message still comes.
+  const partial = body.replace(/### Summary\n\n_No response_\n\n/, '');
+  const rescued = await runMissingLabel({ title, body: partial });
+  assert.match(rescued.commentsOn(41)[0], /It looks like a \*\*New entry\*\* submission/);
+});
+
+test('isEntrySubmission: a write-up that is not the last question does not hide the ones after it', () => {
+  const schema = {
+    entry: { singular: 'Entry' },
+    fields: [
+      { key: 'title', label: 'Title', type: 'text', required: true },
+      { key: 'body', label: 'Write-up', type: 'markdown' },
+      { key: 'contact', label: 'Contact', type: 'text' },
+    ],
+  };
+  const { labels, finalLabel } = entryIssueShape(schema);
+  assert.equal(labels[labels.length - 1], 'Contact', 'the fixture must put a question after the write-up');
+  assert.equal(finalLabel, '');
+  const body = labels.map((label) => `### ${label}\n\nAnswer`).join('\n\n');
+  assert.equal(isEntrySubmission({ title: '[Entry] Water routing', body, schema }), true);
+});
+
+test('isEntrySubmission: the form’s prefix in any case, and every question’s heading', () => {
+  const schema = loadSchema(ROOT);
+  const { title, body } = entryFormBody();
+  assert.equal(isEntrySubmission({ title, body, schema }), true);
+  assert.equal(isEntrySubmission({ title: title.toLowerCase(), body, schema }), true);
+  // The page's own prefix is the noun as configured ("[Use case] "), the form's is capitalised.
+  assert.equal(isEntrySubmission({ title: '[Use case] Water routing', body, schema }), true);
+  assert.equal(isEntrySubmission({ title: '[Bug] Water routing', body, schema }), false);
+  assert.equal(isEntrySubmission({ title: 'Water routing', body, schema }), false);
+  assert.equal(
+    isEntrySubmission({ title, body: body.replace('### Organization', 'Organization'), schema }),
+    false
+  );
+  assert.equal(isEntrySubmission({ title, body: '', schema }), false);
+  assert.equal(isEntrySubmission({ title, body: undefined, schema }), false);
+  assert.equal(isEntrySubmission({ title, body, schema: {} }), false, 'no schema, no shape to match');
+  // A question heading typed inside the write-up does not stand in for a missing one.
+  const moved = body.replace('### Organization\n\n_No response_\n\n', '') + '\n\n### Organization\n\nAcme';
+  assert.equal(isEntrySubmission({ title, body: moved, schema }), false);
+});
+
+/** The `issues: opened` payload of a direct submission, against the workspace's two-field schema. */
+const claimContext = (association = 'NONE', overrides = {}) =>
+  context({
+    payload: {
+      issue: {
+        number: 41,
+        title: '[Entry] Water routing',
+        body: '### Title\n\nWater routing\n\n### Summary\n\nIt routes water.',
+        author_association: association,
+        ...overrides,
+      },
+    },
+  });
+
+test('claim: an unlabelled entry submission gets content:new-entry, and nothing else is said', async () => {
+  const github = fakeGitHub({ issues: { 41: {} }, labels: [ENTRY_LABEL] });
+  const claimed = await claimEntrySubmission({
+    github,
+    context: claimContext(),
+    core: logs(),
+    root: WORKSPACE,
+  });
+  assert.equal(claimed, true);
+  assert.deepEqual(github.calls, [['addLabels', 41, [ENTRY_LABEL]]]);
+});
+
+test('claim: an issue that is not an entry submission is left alone', async () => {
+  for (const overrides of [
+    { title: 'How do I submit?' },
+    { body: '### Title\n\nWater routing' },
+    { body: null },
+  ]) {
+    const github = fakeGitHub({ issues: { 41: {} } });
+    const claimed = await claimEntrySubmission({
+      github,
+      context: claimContext('NONE', overrides),
+      core: logs(),
+      root: WORKSPACE,
+    });
+    assert.equal(claimed, false, JSON.stringify(overrides));
+    assert.deepEqual(github.calls, []);
+  }
+});
+
+test('claim: an edit claims an unlabelled submission, unless a maintainer took the label off', async () => {
+  const edited = (overrides = {}) => ({
+    ...claimContext('NONE', overrides),
+    payload: { ...claimContext('NONE', overrides).payload, action: 'edited' },
+  });
+  // Edited before the opened run's claim landed (that run was cancelled): claim it now.
+  const github = fakeGitHub({ issues: { 41: {} }, labels: [ENTRY_LABEL] });
+  assert.equal(
+    await claimEntrySubmission({ github, context: edited(), core: logs(), root: WORKSPACE }),
+    true
+  );
+  assert.deepEqual(github.calls, [['addLabels', 41, [ENTRY_LABEL]]]);
+  // Claiming again (a race with the cancelled run, a re-run) changes nothing.
+  assert.equal(
+    await claimEntrySubmission({ github, context: edited(), core: logs(), root: WORKSPACE }),
+    true
+  );
+  assert.deepEqual(github.labelsOf(41), [ENTRY_LABEL]);
+
+  // A maintainer removed content:new-entry to stop the automation: an edit must not put it back.
+  const removed = fakeGitHub({
+    issues: { 41: {} },
+    labels: [ENTRY_LABEL],
+    events: {
+      41: [
+        { event: 'labeled', label: { name: ENTRY_LABEL } },
+        { event: 'unlabeled', label: { name: ENTRY_LABEL } },
+      ],
+    },
+  });
+  const core = logs();
+  assert.equal(
+    await claimEntrySubmission({ github: removed, context: edited(), core, root: WORKSPACE }),
+    false
+  );
+  assert.deepEqual(removed.calls, []);
+  assert.ok(core.lines.some(([, line]) => /removed/.test(line)));
+
+  // Another label's history does not count.
+  const other = fakeGitHub({
+    issues: { 41: {} },
+    labels: [ENTRY_LABEL],
+    events: { 41: [{ event: 'unlabeled', label: { name: 'needs-triage' } }] },
+  });
+  assert.equal(
+    await claimEntrySubmission({ github: other, context: edited(), core: logs(), root: WORKSPACE }),
+    true
+  );
+
+  // The history cannot be read: claim anyway, and say so — an orphaned submission is the worse outcome.
+  const blind = fakeGitHub({ issues: { 41: {} }, labels: [ENTRY_LABEL], fail: ['issues.listEvents'] });
+  const warned = logs();
+  assert.equal(
+    await claimEntrySubmission({ github: blind, context: edited(), core: warned, root: WORKSPACE }),
+    true
+  );
+  assert.ok(warned.lines.some(([level]) => level === 'warning'));
+});
+
+test('claim: a label that cannot be added gets the "label missing" message once, with received and needs-triage for an outsider', async () => {
+  const refuse = (github) => {
+    const add = github.rest.issues.addLabels;
+    github.rest.issues.addLabels = async (params) => {
+      if (params.labels.includes(ENTRY_LABEL)) throw httpError(403);
+      return add(params);
+    };
+    return github;
+  };
+  const core = logs();
+  const outsider = refuse(fakeGitHub({ issues: { 41: {} } }));
+  assert.equal(
+    await claimEntrySubmission({ github: outsider, context: claimContext(), core, root: WORKSPACE }),
+    false
+  );
+  assert.match(outsider.commentsOn(41)[0], /It looks like a \*\*New entry\*\* submission/);
+  assert.match(outsider.commentsOn(41)[0], /add the `content:new-entry` label/);
+  assert.deepEqual(outsider.labelsOf(41).sort(), ['needs-triage', STATUS.received]);
+  assert.ok(core.lines.some(([level, line]) => level === 'warning' && /HTTP|403/.test(line)));
+  // Run again (a re-run of the job): still one message.
+  await claimEntrySubmission({ github: outsider, context: claimContext(), core: logs(), root: WORKSPACE });
+  assert.equal(outsider.commentsOn(41).length, 1);
+
+  const owner = refuse(fakeGitHub({ issues: { 41: {} } }));
+  await claimEntrySubmission({
+    github: owner,
+    context: claimContext('OWNER'),
+    core: logs(),
+    root: WORKSPACE,
+  });
+  assert.equal(owner.commentsOn(41).length, 1);
+  assert.deepEqual(owner.labelsOf(41), []);
 });
 
 /** A draft as the REST API returns it, for the tests that read the pull request again. */

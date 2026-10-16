@@ -8,7 +8,8 @@
  * 3. Checks every .github/ISSUE_TEMPLATE form against GitHub's limits.
  * 4. In CI (GITHUB_REPOSITORY set), checks that _data/site.yml and the issue
  *    template contact links point at *this* repository, not the template's.
- * 5. Runs scripts/check_front_matter.rb and scripts/check_file_sizes.rb.
+ * 5. Checks _data/site.yml's optional `submit.signin_url` is a usable address.
+ * 6. Runs scripts/check_front_matter.rb and scripts/check_file_sizes.rb.
  *
  * Deliberately build-free: it must stay runnable without Ruby, Jekyll or a
  * built _site. The checks that need a built tree live in `npm run test:build`.
@@ -22,6 +23,7 @@ import { pathToFileURL } from 'node:url';
 import * as yaml from 'js-yaml';
 import { expectedToolchain, parseToolVersions } from './lib/toolchain.mjs';
 import { checkIssueForms } from './lib/issue_forms.mjs';
+import { signinUrlProblem } from './lib/signin_url.mjs';
 
 const ROOT = process.cwd();
 let failed = false;
@@ -156,6 +158,24 @@ if (ciRepository) {
   }
 } else {
   console.log('SKIP  repository identity check — only runs in GitHub Actions (GITHUB_REPOSITORY unset).');
+}
+
+// --- Sign-in service address ----------------------------------------------
+// `submit.signin_url` switches on "Sign in with GitHub" on the submit page. The
+// page would quietly drop a path, and a plain-http address would carry the
+// token unencrypted, so a value has to be exactly the service's https origin.
+
+{
+  let signinUrl;
+  try {
+    signinUrl = yaml.load(fs.readFileSync(path.join(ROOT, '_data', 'site.yml'), 'utf8'))?.submit?.signin_url;
+  } catch {
+    // A missing or unparseable site.yml was already reported above.
+  }
+  if (signinUrl !== undefined && signinUrl !== null && String(signinUrl).trim() !== '') {
+    const problem = signinUrlProblem(signinUrl);
+    report(problem === '', '_data/site.yml submit.signin_url is the sign-in service address', problem);
+  }
 }
 
 // --- Ruby checks -----------------------------------------------------------

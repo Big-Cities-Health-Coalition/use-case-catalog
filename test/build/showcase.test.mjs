@@ -330,6 +330,8 @@ describe('the showcase', { skip: ready.ok ? false : ready.reason, concurrency: f
         !submit.includes(`github.com/${repository}`),
         `${result.id} would file its sample submissions on ${repository}`
       );
+      // Nothing is sent to GitHub from an example, so there is nothing to sign in for.
+      assert.ok(!submit.includes('data-signin-notice'), `${result.id} asks visitors to sign in to GitHub`);
       // The footer's "Report a problem with the site" link is on every page.
       const home = fs.readFileSync(path.join(result.siteDir, 'index.html'), 'utf8');
       assert.ok(

@@ -8,11 +8,17 @@ How the template is put together, and why. Read this before changing anything st
 A static Jekyll site on GitHub Pages, with GitHub itself as the CMS. Everything that varies between
 deployments lives in `_data/*.yml`; templates, scripts and workflows read those files instead of
 carrying site-specific knowledge. Members submit entries through a web form that opens a prefilled
-GitHub issue; a workflow turns the issue into a pull request; maintainers merge; Pages rebuilds.
-There is no server, no database and no build step a maintainer has to run by hand.
+GitHub issue, or, when the deployment sets `submit.signin_url`, files the issue as themselves after
+"Sign in with GitHub"; a workflow turns the issue into a pull request; maintainers merge; Pages
+rebuilds. There is no database and no build step a maintainer has to run by hand, and the only
+server is the optional, stateless sign-in function (see "Automation").
 
 ```
-  browser ─▶ /submit/ form ─▶ prefilled GitHub issue ─▶ new-entry.yml workflow
+  browser ─▶ /submit/ form ─┬▶ prefilled GitHub issue (default, and the fallback) ─┐
+                            └▶ sign in (services/github-signin) ─▶ issue created   │
+                               as the submitter, no label ─▶ `claim` job labels it ─┤
+                                                                                    ▼
+                                                                         new-entry.yml workflow
                                                               │  scripts/new_entry_from_issue.mjs
                                                               ▼
                                             catalog/<slug>/index.md (+ screenshots/)  in a PR
@@ -91,7 +97,12 @@ runs Jekyll in Actions (not the legacy Pages builder, which disallows plugins).
 - `submit/index.md` — one sectioned page that scripts turn into steps (one per schema group, plus
   a required-only "short form" toggle); `assets/js/submit.js` orchestrates `submit/{fields,validate,
   repeatable,preview,draft,handoff,review,steps,shortform}.js` and hands off to a prefilled
-  `new-entry.yml` issue. Without JavaScript it stays one long page.
+  `new-entry.yml` issue. Without JavaScript it stays one long page. When `submit.signin_url` is set
+  in `_data/site.yml`, `submit/direct.js` instead signs the submitter in through the service in
+  `services/github-signin/` (a Vercel-deployed GitHub App web flow with PKCE: it exchanges the code
+  with the client secret and `postMessage`s the token to the allowed origin, storing nothing and
+  never seeing the answers) and creates the issue through the GitHub REST API as the submitter.
+  The prefilled-issue link stays the default and the fallback on any failure.
 - `status/index.md` — "Check your submission" (module `status`): a number field whose
   `assets/js/status-page.js` reads the issue from GitHub's public API in the browser and shows its
   stage, worked out by the pure rules in `assets/js/lib/submission-status.js` from the issue's
@@ -105,12 +116,20 @@ parameters cannot use bracket access, so lookups are assigned to a variable firs
 ### Automation
 
 Each workflow in `.github/workflows/` pairs with one script and passes the issue through
-`ISSUE_BODY` / `ISSUE_TITLE` environment variables — the scripts make no GitHub API calls, so they
-run identically in tests.
+`ISSUE_BODY` / `ISSUE_TITLE` environment variables, so the scaffolding scripts run identically in
+tests. The exceptions are the `claim` job (below) and `metrics.mjs`, which call the GitHub API.
+
+An issue created through the sign-in route arrives with no `content:` label, because GitHub drops
+the labels of an API request from a user without push access. `new-entry.yml`'s `claim` job runs
+on issues `opened` / `edited` when no `content:` label is present; `scripts/lib/direct_submission.mjs`
+recognises an entry-shaped issue (title prefix and the schema's question headings) and adds
+`content:new-entry` with `GITHUB_TOKEN`. A label added that way starts no new run, so the
+`scaffold` job takes the claim from `needs.claim`. `missing-label.yml` skips entry-shaped issues
+so the two do not both reply.
 
 | Workflow | Trigger | Script | Result |
 |---|---|---|---|
-| `new-entry.yml` | issue labelled `content:new-entry` | `scripts/new_entry_from_issue.mjs` (+ `lib/issue_body`, `lib/images`, `lib/yaml`, `lib/review` for the checklist and `escalate_on`) | PR adding `catalog/<slug>/` with downloaded screenshots, the maintainer checklist and `review:*` labels |
+| `new-entry.yml` | issue labelled `content:new-entry`, or an unlabelled entry-shaped issue its `claim` job labels | `scripts/new_entry_from_issue.mjs`, `scripts/lib/direct_submission.mjs` for `claim` (+ `lib/issue_body`, `lib/images`, `lib/yaml`, `lib/review` for the checklist and `escalate_on`) | PR adding `catalog/<slug>/` with downloaded screenshots, the maintainer checklist and `review:*` labels |
 | `thumbnails.yml` | PR touching `catalog/**` | `scripts/thumbnail_sources.mjs` + `pdftoppm` | commits `thumb.jpg` from `deck.pdf` |
 | `new-event.yml`, `new-year.yml`, `update-schedule.yml`, `update-event-attachments.yml` | issues from the cohort forms (in the chooser only while `modules.cohorts` is on; `generate.mjs` writes them from `scripts/issue-forms/`) | matching `scripts/*` | PRs against `_data/` |
 | `refresh-entry.yml` | issue labelled `content:refresh` | `scripts/refresh_entry_from_issue.mjs` | "still accurate" → PR stamping the entry's `verified:` date; "needs updates" → the reported changes are labelled `review:refresh-changes` for the maintainer queue |

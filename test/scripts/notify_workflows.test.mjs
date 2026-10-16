@@ -2,8 +2,9 @@
  * The workflow wiring around the submitter notifications: every rebuild of a
  * draft branch waits on the branch guard, the stage workflow listens for the
  * labels notify.mjs acts on and runs only default-branch code, Bootstrap labels
- * creates the same status labels the notifier does, and every step that
- * imports the notifier has installed it first.
+ * creates the same status labels the notifier does, every step that
+ * imports the notifier has installed it first, and an entry submission that
+ * arrives without its label ("Sign in with GitHub") is claimed and scaffolded.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,6 +23,7 @@ import {
   STATUS,
   stageDecision,
 } from '../../scripts/lib/notify.mjs';
+import { runs } from '../helpers/workflow_expr.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const DIR = path.join(ROOT, '.github', 'workflows');
@@ -97,7 +99,8 @@ test('every step that imports the notifier has checked out and installed the rep
     for (const [jobName, job] of Object.entries(parse(name).jobs ?? {})) {
       const steps = job.steps ?? [];
       steps.forEach((step, index) => {
-        if (!/notify_github\.mjs/.test(step.with?.script ?? '')) return;
+        // direct_submission.mjs imports the notifier too.
+        if (!/notify_github\.mjs|direct_submission\.mjs/.test(step.with?.script ?? '')) return;
         seen += 1;
         const before = steps.slice(0, index);
         assert.ok(
@@ -380,4 +383,121 @@ test('an "also deployed by" draft is declined by closing the pull request, not t
   assert.ok(section, 'docs/admin-guide.md has no "Also deployed by" section');
   assert.match(section, /Decline by closing the pull request without merging/);
   assert.doesNotMatch(section, /Decline by closing the issue/);
+});
+
+/**
+ * Which new-entry.yml jobs one `issues` event runs, from the jobs' own `if:`s:
+ * the claim first, then the jobs that need it, given what the claim said.
+ */
+function newEntryRun(
+  { action, labels = [], state = 'open', title, association = 'NONE', open = '' },
+  claimSays
+) {
+  const { jobs } = parse('new-entry.yml');
+  const issue = {
+    number: 41,
+    state,
+    title: title ?? '[Entry] Water routing',
+    body: '### Title\n\nWater routing\n\n### Summary\n\nIt routes water.',
+    labels: labels.map((name) => ({ name })),
+    author_association: association,
+  };
+  const event = { github: { event: { action, issue } }, vars: { SUBMISSIONS_OPEN: open } };
+  const claim = runs(jobs.claim, event);
+  const after = { ...event, needs: { claim: { outputs: { claimed: claim ? claimSays : '' } } } };
+  const upstreamSkipped = !claim;
+  return {
+    claim,
+    scaffold: runs(jobs.scaffold, after, { upstreamSkipped }),
+    closed: runs(jobs['say-submissions-are-closed'], after, { upstreamSkipped }),
+  };
+}
+
+// The submit page's success panel sends a submitter with a file question to
+// edit the issue straight away. That edit cancels the `opened` run (one run
+// per issue, cancel-in-progress), so if the claim had not labelled the issue
+// yet, the `edited` run is the only one left to do it — or nothing ever does.
+test('new-entry.yml: an edit before the claim labels the issue still gets it claimed and scaffolded', () => {
+  assert.deepEqual(newEntryRun({ action: 'opened' }, 'true'), { claim: true, scaffold: true, closed: false });
+  assert.deepEqual(
+    newEntryRun({ action: 'edited' }, 'true'),
+    { claim: true, scaffold: true, closed: false },
+    'an unlabelled submission edited before its claim is orphaned'
+  );
+  // Paused intake: the edited run still tells an outsider, once (notifyIssue's `once`).
+  assert.deepEqual(newEntryRun({ action: 'edited', open: 'false' }, 'true'), {
+    claim: true,
+    scaffold: false,
+    closed: true,
+  });
+  // Already labelled (the claim got there first, or the form did): the label decides, no claim.
+  for (const action of ['opened', 'edited']) {
+    assert.deepEqual(newEntryRun({ action, labels: [ENTRY_LABEL] }, ''), {
+      claim: false,
+      scaffold: true,
+      closed: false,
+    });
+  }
+  // An edit that the claim turns down, an issue that is not a submission, a closed one, another content form's.
+  assert.deepEqual(newEntryRun({ action: 'edited' }, 'false'), {
+    claim: true,
+    scaffold: false,
+    closed: false,
+  });
+  assert.deepEqual(newEntryRun({ action: 'edited', title: 'How do I submit?' }, 'true'), {
+    claim: false,
+    scaffold: false,
+    closed: false,
+  });
+  assert.deepEqual(newEntryRun({ action: 'edited', state: 'closed' }, 'true'), {
+    claim: false,
+    scaffold: false,
+    closed: false,
+  });
+  assert.deepEqual(newEntryRun({ action: 'edited', labels: [EDIT_REQUEST_LABEL] }, 'true'), {
+    claim: false,
+    scaffold: false,
+    closed: false,
+  });
+});
+
+test('new-entry.yml claims an unlabelled entry submission and scaffolds it in the same run', () => {
+  const workflow = parse('new-entry.yml');
+  const { claim, scaffold } = workflow.jobs;
+  const closed = workflow.jobs['say-submissions-are-closed'];
+  assert.ok(claim, 'new-entry.yml has no claim job');
+  // An open issue with no content:* label, opened or edited: a labelled one is
+  // the form's or already claimed (see the edit-before-claim test above).
+  for (const part of [
+    "(github.event.action == 'opened' || github.event.action == 'edited')",
+    "github.event.issue.state == 'open'",
+    "!contains(join(github.event.issue.labels.*.name, ','), 'content:')",
+  ]) {
+    assert.ok(claim.if.includes(part), `claim.if lacks ${part}`);
+  }
+  assert.deepEqual(claim.permissions, { contents: 'read', issues: 'write' });
+  assert.equal(claim.outputs.claimed, '${{ steps.claim.outputs.claimed }}');
+  const checkout = claim.steps.find((step) => /actions\/checkout@/.test(step.uses ?? ''));
+  assert.equal(checkout.with['persist-credentials'], false);
+  const step = claim.steps.find((s) => s.id === 'claim');
+  assert.match(step.with.script, /direct_submission\.mjs/);
+  assert.match(step.with.script, /claimEntrySubmission\(/);
+  assert.match(step.with.script, /core\.setOutput\('claimed'/);
+  // The issue's text reaches the script through the event payload, never a template expression.
+  assert.doesNotMatch(JSON.stringify(claim.steps), /github\.event\.issue\.(title|body)/);
+
+  for (const [name, job] of [
+    ['scaffold', scaffold],
+    ['say-submissions-are-closed', closed],
+  ]) {
+    assert.equal(job.needs, 'claim', `${name} does not wait for the claim`);
+    // Skipped claim (every labelled issue, every edit) must not skip the job.
+    assert.match(job.if, /^!cancelled\(\)/, `${name} is skipped whenever claim is`);
+    assert.ok(
+      job.if.includes(
+        "(contains(github.event.issue.labels.*.name, 'content:new-entry') || needs.claim.outputs.claimed == 'true')"
+      ),
+      `${name} does not take a claimed issue`
+    );
+  }
 });

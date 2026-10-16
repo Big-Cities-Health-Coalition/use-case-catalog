@@ -1,0 +1,11 @@
+{
+  "name": "phct-github-signin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Optional sign-in service for a PHCT /submit/ page: finishes a GitHub App web-flow sign-in and hands the token to the page. Deployed as its own Vercel project from this directory.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  }
+}

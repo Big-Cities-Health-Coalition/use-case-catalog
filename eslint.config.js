@@ -1,5 +1,5 @@
 // ESLint flat config. Two environments: browser IIFEs/modules under assets/js and
-// Node ESM under scripts/ and test/. Style is Prettier's job; this catches bugs.
+// Node ESM under scripts/, test/ and services/. Style is Prettier's job; this catches bugs.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -37,6 +37,7 @@ export default [
     files: [
       'scripts/**/*.mjs',
       'test/**/*.mjs',
+      'services/**/*.mjs',
       'eslint.config.js',
       'tailwind.config.js',
       'postcss.config.js',

@@ -15,8 +15,15 @@ export const COVERAGE_GROUPS = [
     id: 'full',
     label: 'All Node production code loaded by the complete unit suite',
     thresholds: { lines: 82, branches: 72, functions: 75 },
-    includes: ['assets/js/**/*.js', 'scripts/**/*.mjs'],
+    includes: ['assets/js/**/*.js', 'scripts/**/*.mjs', 'services/*/api/**/*.mjs', 'services/*/lib/**/*.mjs'],
     tests: [],
+  },
+  {
+    id: 'signin-service',
+    label: 'The optional GitHub sign-in service, which handles OAuth state and user tokens',
+    thresholds: { lines: 95, branches: 90, functions: 95 },
+    includes: ['services/github-signin/api/**/*.mjs', 'services/github-signin/lib/**/*.mjs'],
+    tests: ['services/github-signin/test/signin.test.mjs'],
   },
   {
     id: 'security-parsers',
