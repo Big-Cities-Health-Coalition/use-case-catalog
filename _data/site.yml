@@ -83,6 +83,12 @@ submit:
   turnaround: "Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share."   # the last step of "what happens next" — make it a promise you can keep
   review_note: "Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content."
   fallback_email: false   # no email route: every submission comes through GitHub, which requires an account
+  # Optional "Sign in with GitHub, submit directly": the address of the sign-in
+  # service you deploy from services/github-signin/ (e.g.
+  # https://catalog-signin.vercel.app). Signed-in submitters then send their
+  # answers as an issue straight from /submit/, however long. Blank keeps the
+  # link hand-off only. See docs/configuration.md.
+  signin_url: "https://bchc-catalog-signin.vercel.app"
 
 # Catalog behaviour (module: catalog)
 catalog:
