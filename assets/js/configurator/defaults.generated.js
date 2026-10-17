@@ -82,7 +82,8 @@ export const SITE = {
     "turnaround": "Intake checks it within about five business days and the Governance Committee reviews it within about ten more; you keep ownership of anything you share.",
     "review_note": "Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content.",
     "fallback_email": false,
-    "signin_url": "https://bchc-catalog-signin.vercel.app"
+    "signin_url": "https://bchc-catalog-signin.vercel.app",
+    "uploads_url": "https://bchc-catalog-uploads.vercel.app"
   },
   "catalog": {
     "verify_after_days": 365

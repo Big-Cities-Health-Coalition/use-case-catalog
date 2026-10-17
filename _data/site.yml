@@ -89,6 +89,12 @@ submit:
   # answers as an issue straight from /submit/, however long. Blank keeps the
   # link hand-off only. See docs/configuration.md.
   signin_url: "https://bchc-catalog-signin.vercel.app"
+  # Optional file uploads on /submit/: the address of the upload service you
+  # deploy from services/uploads/ (e.g. https://catalog-uploads.vercel.app).
+  # Signed-in submitters can then attach screenshots and a PDF deck right on
+  # the page. Needs signin_url, because uploads work only for signed-in
+  # submitters. Blank turns it off. See docs/configuration.md.
+  uploads_url: "https://bchc-catalog-uploads.vercel.app"
 
 # Catalog behaviour (module: catalog)
 catalog:
