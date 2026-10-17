@@ -41,7 +41,10 @@ nothing, and has no runtime dependencies.
 
 In the browser the token is kept in `sessionStorage`: it is limited to that
 tab, gone when the tab closes, and sent only to `api.github.com`. It is never
-saved with the draft.
+saved with the draft. The one exception: if the deployment also runs the
+[upload service](../uploads/README.md) (`submit.uploads_url`), the page sends
+the token to that service too, which uses it for one `GET /user` call to learn
+who is uploading and nothing else.
 
 ### Every page on your site's origin is trusted with the token
 

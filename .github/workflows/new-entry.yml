@@ -156,6 +156,45 @@ jobs:
             const notify = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/lib/notify_github.mjs`).href);
             await notify.notifyIssue({ github, context, core, status: notify.STATUS.received });
 
+      # Optional: files attached on /submit/ live in a PRIVATE uploads repository
+      # (docs/submit-uploads-plan.md), and the issue body names them with
+      # `upload:` lines. Reading them needs a credential for that repository, so
+      # this mints one — and only when the repository variable UPLOADS_REPO
+      # (`owner/name`) is set; unset, neither step runs and nothing changes.
+      # The token is a GitHub App installation token that can READ CONTENTS of
+      # that one repository and nothing else (`permission-contents: read`), it
+      # expires within the hour, and it is handed to the scaffold step below and
+      # to no other step. Deleting uploads is a separate, write-capable token
+      # minted in uploads-cleanup.yml, never here. The variable is split in a
+      # step of its own because the action takes the owner and the repository
+      # name separately and expressions cannot split a string.
+      #
+      # Both steps are non-fatal: a misconfigured or unreachable App must not
+      # cost a submitter their draft. A failed mint leaves the token empty, and
+      # the scaffolder drafts the entry anyway with one warning per `upload:`
+      # answer it could not collect (scripts/lib/uploads.mjs).
+      - name: Split the uploads repository name
+        id: uploads-repo
+        if: vars.UPLOADS_REPO != ''
+        continue-on-error: true
+        env:
+          UPLOADS_REPO: ${{ vars.UPLOADS_REPO }}
+        run: |
+          echo "owner=${UPLOADS_REPO%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${UPLOADS_REPO#*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Mint a read-only token for the uploads repository
+        id: uploads-token
+        if: vars.UPLOADS_REPO != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.UPLOADS_APP_ID }}
+          private-key: ${{ secrets.UPLOADS_APP_PRIVATE_KEY }}
+          owner: ${{ steps.uploads-repo.outputs.owner }}
+          repositories: ${{ steps.uploads-repo.outputs.name }}
+          permission-contents: read
+
       - name: Scaffold entry files
         id: scaffold
         continue-on-error: true
@@ -166,6 +205,12 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           # Lets the scaffolder download images attached to a private issue.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Empty when UPLOADS_REPO is unset. The scaffolder resolves `upload:`
+          # lines against the ref built from the ISSUE AUTHOR's id, so a
+          # reference copied into someone else's issue finds nothing.
+          UPLOADS_TOKEN: ${{ steps.uploads-token.outputs.token }}
+          UPLOADS_REPO: ${{ vars.UPLOADS_REPO }}
+          ISSUE_AUTHOR_ID: ${{ github.event.issue.user.id }}
 
       - name: Report the failure on the issue
         if: steps.scaffold.outcome == 'failure'

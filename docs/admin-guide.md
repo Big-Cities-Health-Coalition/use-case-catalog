@@ -75,7 +75,7 @@ Optional, and off by default. With `submit.signin_url` set in `_data/site.yml`
 What changes for you:
 
 - **The issue opens without a label.** GitHub drops the labels of an API request from anyone without push access. The `claim` job in `new-entry.yml` (on `opened`, and on `edited` in case an early edit cancelled the opened run before it labelled the issue) recognises an entry submission by its shape — the form's `[<Singular>] ` title prefix and a `### <Label>` heading for every question, exactly what the issue form writes — adds `content:new-entry`, and the scaffold job drafts the pull request in the same run. `missing-label.yml` leaves these issues alone. If you take `content:new-entry` off such an issue to stop the automation, a later edit does not put it back. Review the pull request as usual: an issue that only looks like a submission gets no further than one anyone could file through the form, a draft pull request you have to merge.
-- **No files.** A direct submission cannot attach a file. The page tells the submitter to edit the new issue and drag the file in under its question; that edit re-runs the scaffold job, which picks the file up.
+- **No files, unless uploads are on.** On its own, a direct submission cannot attach a file. The page tells the submitter to edit the new issue and drag the file in under its question; that edit re-runs the scaffold job, which picks the file up. With [file uploads](#files-attached-on-the-submit-page) turned on, signed-in submitters attach files on the page itself.
 - **If the label cannot be added** (most often because **Bootstrap labels** was never run), the claim job posts the usual "label missing" comment and, for an outside submitter, adds `needs-triage`. Run Bootstrap labels, then add `content:new-entry` to the issue by hand.
 
 What submitters may report, and what it means:
@@ -88,6 +88,96 @@ What submitters may report, and what it means:
 Every failure keeps the submitter's answers and offers the link hand-off instead, so nothing is lost while you fix it.
 
 To rotate the client secret or turn the feature off, see the README's *Rotate or remove*. Blanking `submit.signin_url` and publishing turns it off on the site at once; uninstall the GitHub App to revoke tokens already issued.
+
+## Files attached on the submit page
+
+Optional, and off by default. With `submit.uploads_url` set in `_data/site.yml`
+([configuration.md → Submit form copy](configuration.md#submit-form-copy)), a **signed-in** submitter
+gets a file picker on the screenshots question (with an alt-text box beside each picture) and one on
+each file question (the slide deck), instead of being told to drag the files onto the issue
+afterwards. It needs [Sign in with GitHub](#direct-submissions-sign-in-with-github) first, a second
+small service, a second GitHub App and a private repository. [`services/uploads/README.md`](../services/uploads/README.md)
+walks through all of it. Everyone who is not signed in sees the page exactly as before.
+
+**What submitters see.** Each file uploads the moment it is picked, with a progress bar, a Remove button
+and a Try again button if it fails. Pictures are shrunk in the browser first (longest side 2,400
+pixels), which also strips location data. The draft remembers the files, so a reload or a return visit
+keeps them. The page says that screenshots become public on a draft as soon as they are sent.
+
+**What you set on the catalog repository** (Settings → Secrets and variables → Actions):
+
+| Where | Name | Value |
+|---|---|---|
+| Variable | `UPLOADS_REPO` | The private uploads repository, `owner/name`, e.g. `example/catalog-uploads`. Blank or unset turns the workflow steps off. |
+| Secret | `UPLOADS_APP_ID` | The App ID of the uploads GitHub App. |
+| Secret | `UPLOADS_APP_PRIVATE_KEY` | The whole `.pem` file of that App. |
+
+The uploads App is a different App from the sign-in one: **Contents: read and write**, installed on the
+uploads repository only.
+
+**What reviewers see.** In the issue, the screenshots answer holds lines like
+`upload:k3j9…/9f2c…e1.png | Landing page with a Get Started button`, and the deck answer holds one bare
+`upload:…pdf` line. You do not need to open them: the scaffolder reads each file out of the private
+repository as the issue's author, checks it the way it checks a GitHub attachment (real PNG, JPEG, WebP or PDF;
+8 images, 15 MB total), and commits it into `catalog/<slug>/` like any other attachment. The draft pull
+request shows the files. Every edit of the issue rebuilds the draft and reads the files again, so
+they are kept until the issue closes.
+
+**Warnings the scaffolder posts.** They appear under *Warnings* in the draft pull request and the
+workflow summary; the entry is still drafted without the file.
+
+| Warning says | Meaning | What to do |
+|---|---|---|
+| *"…could not be collected, because file uploads are not set up on this catalog…"* | The issue has `upload:` lines but the scaffold job had no way to read them: `UPLOADS_REPO`, `UPLOADS_APP_ID` or `UPLOADS_APP_PRIVATE_KEY` is missing, the repository name is not `owner/name`, or GitHub refused to mint the App's token (wrong App ID or key, or the App is not installed on the uploads repository; the job's *Mint a read-only token* step shows the error, and the draft is built anyway). It appears once per answer. | Set or fix the variable and both secrets. Then ask the submitter to make any small edit to the issue (or edit it yourself) to rebuild the draft. If you are turning uploads off for good, ask them to drag the file into the answer in place of the `upload:` line. |
+| *"…could not be found — uploads are kept for a limited time, so it may have expired…"* | The file is not in the uploads repository: older than 14 days and swept, removed by the submitter, or the line was copied from another person's issue (files are looked up under the issue author's own id only). | Ask the submitter to drag the file into that answer on the issue, in place of the `upload:` line. |
+| *"Could not attach … (…)"* (deck), *"Could not download … (…)"* or *"Skipped …"* (screenshots) | The file was found but failed a check: not the type it claims, over the size cap, or its bytes do not match the reference. | Same as for a GitHub attachment: add it by hand in the pull request. |
+
+A deck that could not be collected leaves the entry's file path in the front matter, like an attachment
+GitHub could not keep; the warning names the path to commit the file under. front-matter validation
+warns about the dangling path until you do.
+
+**Cleanup.** Files are deleted by the **Uploads cleanup** workflow (`uploads-cleanup.yml`), never by
+the scaffolder:
+
+- When a submission's draft pull request is **merged or closed**, or its `content:new-entry` issue is
+  **closed** by hand, the files the issue's body names are deleted, unless another open submission by
+  the same author still names them. A draft closed while its issue stays open (to restart it) deletes
+  nothing; if the issue closes moments later, the daily sweep below picks the files up.
+- **Every day** (04:47 UTC), any set of files whose newest file is more than 14 days old and that no
+  *open* `content:new-entry` issue by the same author still names is deleted. This catches drafts that
+  were never submitted.
+- **Run workflow** on the Actions tab runs a sweep by hand. Tick **Preview only** to list what would be
+  deleted without deleting anything. The summary shows how many were deleted, already gone, kept and failed.
+
+A run that cannot tell what is still in use (for example GitHub's issue list is unavailable) stops
+without deleting. With `UPLOADS_REPO` unset the workflow's summary says it is turned off.
+
+**Limits.** 4 MB per file, 3 drafts with files per person at once, 9 files per draft. GitHub allows an App
+about 80 writes a minute and 500 an hour, and each file takes four, so a whole catalog can take roughly
+14 submissions an hour that each carry a deck and eight screenshots. Real volume is a few a week. A
+bigger deck has to be exported smaller or linked instead.
+
+**Purging something sensitive.** The private repository does not keep screenshots private once a
+submission is scaffolded: the files are committed to the public `entry/*` draft branch and shown in the
+draft pull request before anyone has reviewed them. If a submitter uploaded something that must not be
+there:
+
+1. **Stop the draft.** Close the pull request and delete the `entry/…` branch, then delete the issue (the
+   original upload is also attached there). The rest is the same as for any published protected data:
+   follow [incidents.md](incidents.md), including asking GitHub Support to garbage-collect the
+   unreachable commits, because the pull request's commits stay fetchable by their SHA until then.
+2. **Delete the upload.** In the uploads repository the file is a branch `u/<user-id>/<set>/<sha256>`. The
+   Uploads cleanup workflow deletes it when the issue closes; to do it now, delete that branch on GitHub
+   (the repository's Branches page, search `u/`). Deleting the branch makes the file unreachable, not
+   erased: git keeps unreachable objects until GitHub garbage-collects them. To have it gone at once,
+   contact GitHub Support and ask them to purge the unreachable objects from the uploads repository.
+
+Each file is a single parentless commit, so deleting its branch never touches anyone else's files.
+
+**Turning it off.** Blank `submit.uploads_url` and publish: the pickers disappear at once. Submissions
+already open keep their `upload:` lines, so leave the uploads App and variable in place until they are
+scaffolded and closed, or the warning above appears. To remove it entirely, see the README's
+*Rotate or remove*.
 
 ## Reviewing a submission
 
@@ -425,6 +515,8 @@ screenshots:
 
 Files are numbered in the order they were attached (`01.png`, `02.jpg`, …) and named from the format actually detected, not from the URL.
 
+**The other route, when uploads are on.** With [file uploads](#files-attached-on-the-submit-page) turned on, a signed-in submitter picks the pictures on `/submit/` instead, and the issue holds `upload:` lines rather than GitHub image links. The scaffolder reads those files from the private uploads repository and applies the same limits, checks and numbering, and writes the alt text the submitter typed. Dragging pictures onto the issue still works for everyone, including after an edit.
+
 **Limits enforced by the download step** (`scripts/lib/images.mjs`):
 
 - at most **8 files** per entry;
@@ -449,7 +541,7 @@ A failure never fails the scaffold. If an image cannot be downloaded it is left 
 
 ## Other attachments and thumbnails
 
-- File-type schema fields (e.g. `deck_pdf`) store a path (`/catalog/<slug>/<filename>`) in front matter. The submission form asks for the file directly (GitHub's `upload` control), and the scaffolder commits it into the entry folder with the rest of the pull request. If the submitter skipped it, the field is left blank; to add the file by hand, commit it to that folder in the same PR and set the field to its path. If the download was refused (the file has to actually be a PDF: the scaffolder checks the bytes, and says so on the pull request when they do not match), the front matter keeps the attachment's URL, and the pull request note names the path to commit the file under instead. A file field may also hold any other `http(s)` URL. A pasted link that is not a GitHub attachment is stored as it is and not downloaded. That is the way to point at a file too big for the repository; see [Large files](#large-files).
+- File-type schema fields (e.g. `deck_pdf`) store a path (`/catalog/<slug>/<filename>`) in front matter. The submission form asks for the file directly (GitHub's `upload` control), or, for a signed-in submitter on a catalog with [file uploads](#files-attached-on-the-submit-page) turned on, a PDF picker on `/submit/`. Either way the scaffolder commits it into the entry folder with the rest of the pull request. If the submitter skipped it, the field is left blank; to add the file by hand, commit it to that folder in the same PR and set the field to its path. If the download was refused (the file has to actually be a PDF: the scaffolder checks the bytes, and says so on the pull request when they do not match), the front matter keeps the attachment's URL, and the pull request note names the path to commit the file under instead. A file field may also hold any other `http(s)` URL. A pasted link that is not a GitHub attachment is stored as it is and not downloaded. That is the way to point at a file too big for the repository; see [Large files](#large-files).
 - `links`-type fields (shipped: `resources`) hold `{label, url}` pairs and need no files at all. They are the right home for a shared drive folder, a recorded demo, a model card or a vendor page — anything that does not deserve its own `url` field. Check that each one opens for someone outside the organization before merging.
 - Any `file` field flagged `thumbnail: true` in `_data/schema.yml` (shipped: `deck_pdf` → `deck.pdf`) gets a first-page thumbnail rendered automatically:
   - `thumbnails.yml` (**Generate entry media**) triggers on a PR touching any `*.pdf` file — or any `*.png`, `*.jpg`, `*.jpeg` or `*.webp`, since the same job also writes the responsive derivatives described above (it can't read the schema to narrow the trigger, since GitHub evaluates `paths:` before checkout — the schema-driven filtering happens in the next step instead).
@@ -464,6 +556,9 @@ A failure never fails the scaffold. If an image cannot be downloaded it is left 
 Size limits, from smallest to largest:
 - A GitHub issue attachment tops out at 25 MB, and the scaffolder's download cap is
   the same 25 MB.
+- A file attached on the submit page (when [uploads](#files-attached-on-the-submit-page) are on)
+  tops out at 4 MB, the most the upload service can take in one request. A bigger deck is
+  attached on the GitHub issue instead, or linked.
 - `npm run validate` warns at 10 MB and fails at 50 MB (`scripts/check_file_sizes.rb`).
 - GitHub refuses a push containing a file over 100 MB.
 - A Pages site should stay under 1 GB in total.
@@ -574,6 +669,19 @@ All four cohort/event workflows follow the same pattern as new-entry: issue → 
 - Nothing on the published site is affected. Neither workflow touches a page: one opens a pull request with a data file, the other keeps one issue up to date, and a failed run simply means it did not do that this month.
 - The usual cause is a temporary problem talking to the GitHub API. Open the Actions tab, pick the workflow in the left-hand list, and use **Re-run all jobs** on the failed run — or **Run workflow** to start a fresh one.
 - If it is still red across several days and re-running does not clear it, that is a bug in the template rather than in your catalog: report it through [SUPPORT.md](../SUPPORT.md) with a link to the failed run.
+
+**File pickers do not appear on `/submit/`**
+- They show only while the submitter is signed in. Sign in first; the pickers appear on the screenshots and file questions.
+- They need both `submit.signin_url` and `submit.uploads_url` in `_data/site.yml`, published. A blank `uploads_url` (the default) means no pickers; `uploads_url` without `signin_url` fails `npm run validate`.
+
+**"Uploads are not set up on this catalog" warning on a draft**
+- The scaffold job could not read the submitter's `upload:` files. Check that the repository variable `UPLOADS_REPO` (`owner/name`) and the secrets `UPLOADS_APP_ID` and `UPLOADS_APP_PRIVATE_KEY` are all set, then edit the issue to rebuild the draft. The job log has a line beginning `upload: references skipped:` that names which setting is missing (never its value). The setup steps are in [`services/uploads/README.md`](../services/uploads/README.md).
+
+**"Could not be found — it may have expired" warning on a draft**
+- The file is not in the uploads repository: the cleanup workflow removed it (it deletes files older than 14 days that no open issue names), the submitter removed it, or its line was copied from another person's issue. Ask the submitter to drag the file into that answer on the issue.
+
+**A submitter sees "already have files saved for three other drafts"**
+- Each person may have files in three drafts at once; the service answers 429. Their earlier drafts hold files that have not been cleaned up yet (the cleanup runs when the issue closes, and daily for anything past 14 days). Ask them to finish or remove files in an earlier draft, or run **Uploads cleanup** from the Actions tab if the old drafts are abandoned and more than 14 days old. A "9 files" message is the per-draft limit; removing one file clears it.
 
 **A module toggle doesn't seem to do anything**
 - Confirm you're looking at a full rebuild, not a cached preview — `_plugins/modules.rb` removes disabled-module pages at `post_read` time, so the effect only shows up after a Jekyll build, not a live-reload of unrelated content.

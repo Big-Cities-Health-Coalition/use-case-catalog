@@ -16,6 +16,8 @@
  * schema-driven — no field key is ever named. See test/scripts/issue_body.test.mjs.
  */
 
+import { formatUploadRef, parseUploadRef } from './upload_refs.mjs';
+
 /** GitHub's placeholder for an unanswered optional field. */
 export const NO_RESPONSE = '_no response_';
 
@@ -438,8 +440,13 @@ export function parseLinks(raw) {
  * carries. Everything after the first attachment is ignored: the control holds
  * one file.
  *
+ * A bare `upload:<set>/<sha256>.<ext>` line (a file attached on /submit/
+ * through the optional upload service, scripts/lib/upload_refs.mjs) is the
+ * same answer in another store, returned as `{ upload, name }` instead of
+ * `{ url, name }`.
+ *
  * @param {string} raw
- * @returns {{url: string, name: string}|null}
+ * @returns {{url: string, name: string}|{upload: import('./upload_refs.mjs').UploadRef, name: string}|null}
  */
 export function parseAttachmentRef(raw) {
   const text = String(raw ?? '').trim();
@@ -458,20 +465,31 @@ export function parseAttachmentRef(raw) {
   for (const line of text.split('\n')) {
     const bare = line.replace(/^\s*[-*]\s+/, '').trim();
     if (isHttpUrl(bare)) return { url: bare, name: '' };
+    const upload = parseUploadRef(bare);
+    if (upload) return { upload, name: '' };
   }
   return null;
 }
 
 /**
  * Parse an `images` field into download candidates. Accepted per line:
- *   `![alt](url)`, `<img src="url" alt="…">`, `url | alt`, or a bare URL.
- * Duplicate URLs are collapsed, keeping the first alt text seen.
+ *   `![alt](url)`, `<img src="url" alt="…">`, `url | alt`, or a bare URL —
+ *   and `upload:<set>/<sha256>.<ext>` with or without `| alt`, a file attached
+ *   on /submit/ (scripts/lib/upload_refs.mjs), returned as `{ upload, alt }`.
+ * Duplicate URLs (and duplicate references) are collapsed, keeping the first
+ * alt text seen. A line that is neither is dropped.
  * @param {string} raw
- * @returns {Array<{url: string, alt: string}>}
+ * @returns {Array<{url: string, alt: string}|{upload: import('./upload_refs.mjs').UploadRef, alt: string}>}
  */
 export function parseImageRefs(raw) {
   const found = new Map();
   const add = (url, alt) => {
+    const upload = parseUploadRef(url);
+    if (upload) {
+      const key = formatUploadRef(upload);
+      if (!found.has(key)) found.set(key, { upload, alt: String(alt ?? '').trim() });
+      return;
+    }
     const clean = String(url ?? '')
       .trim()
       .replace(/[).,]+$/, '');

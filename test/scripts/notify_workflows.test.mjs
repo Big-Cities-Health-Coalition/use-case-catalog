@@ -355,8 +355,12 @@ test('create-pull-request only builds branches that are new on every run', () =>
 });
 
 test('an "also deployed by" draft is declined by closing the pull request, not the issue, as the admin guide says', () => {
-  // Nothing runs when an issue is closed, so closing one moves no status.
-  for (const name of fs.readdirSync(DIR).filter((file) => file.endsWith('.yml'))) {
+  // Nothing that moves a status runs when an issue is closed, so closing one
+  // moves no status. uploads-cleanup.yml does run then, but only deletes the
+  // files attached on the submit page; it posts and labels nothing.
+  for (const name of fs
+    .readdirSync(DIR)
+    .filter((file) => file.endsWith('.yml') && file !== 'uploads-cleanup.yml')) {
     const types = parse(name).on?.issues?.types ?? [];
     assert.ok(!types.includes('closed'), `${name} runs when an issue is closed`);
   }

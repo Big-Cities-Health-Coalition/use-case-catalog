@@ -1,0 +1,134 @@
+name: Uploads cleanup
+
+# Files attached on /submit/ are stored by the optional upload service as one
+# branch each (`u/<user-id>/<set>/<sha256>`) in a PRIVATE uploads repository
+# (docs/submit-uploads-plan.md). This deletes them once they are not needed:
+#
+#   * when a `content:new-entry` issue closes, or its draft pull request
+#     (branch `entry/<slug>-<issue>`) closes merged or declined, the author's
+#     sets named in the issue body. The pull request trigger exists because a
+#     close made with the built-in GITHUB_TOKEN (a decline, a "Closes #N" on
+#     merge) starts no `issues: closed` run;
+#   * every day, any set older than 14 days that no open `content:new-entry`
+#     issue by the same author still references.
+#
+# Deletion targets always come from the uploads repository's own ref listing;
+# issue text can only cause a set to be kept (scripts/uploads_cleanup.mjs).
+#
+# Off until the repository variable UPLOADS_REPO (`owner/name`) is set, with the
+# secrets UPLOADS_APP_ID and UPLOADS_APP_PRIVATE_KEY of a GitHub App installed
+# on that repository. A manual run from the Actions tab sweeps; its "Preview
+# only" box lists what would go without deleting anything.
+
+on:
+  issues:
+    types:
+      - closed
+  # Same-repository drafts only (the job's `if`); the branch name is read from
+  # the event and used through `env:` only. The checkout below names the default
+  # branch because a declined, conflicting draft has no merge ref to check out.
+  pull_request:
+    types:
+      - closed
+  schedule:
+    # 04:47 UTC daily, off the hour-zero peak where scheduled runs queue for ages.
+    - cron: "47 4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only — list what would be deleted, delete nothing"
+        type: boolean
+        default: false
+
+permissions: {}
+
+# GitHub keeps only ONE pending run per concurrency group and cancels any
+# older pending one, so a single shared group would drop queued close runs.
+# Each closed issue or pull request gets a group of its own (a re-close of the
+# same one waits behind the first, and a dropped pending duplicate would have
+# done the same work); the daily and manual sweeps share the `sweep` group.
+# Runs in different groups may overlap: every deletion target comes from a
+# fresh ref listing and a ref that is already gone (404/422) counts as "already
+# gone", not a failure, so two runs deleting the same files is harmless.
+concurrency:
+  group: uploads-cleanup-${{ github.event.issue.number || github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  # A job whose `if` is false shows up as a bare grey "skipped" with no reason
+  # (see metrics.yml). This one runs only when the feature is off and says so.
+  turned-off:
+    if: >-
+      vars.UPLOADS_REPO == '' && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'content:new-entry') && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'entry/')))
+      && (github.event_name != 'issues' || contains(github.event.issue.labels.*.name, 'content:new-entry'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say why nothing ran
+        run: |
+          echo "Uploads cleanup is turned off: the repository variable UPLOADS_REPO is not set, so there is no uploads repository to clean. Set it in Settings -> Secrets and variables -> Actions -> Variables to turn uploads on." >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup:
+    if: >-
+      vars.UPLOADS_REPO != '' && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'content:new-entry') && github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.event.pull_request.head.ref, 'entry/')))
+      && (github.event_name != 'issues' || contains(github.event.issue.labels.*.name, 'content:new-entry'))
+    runs-on: ubuntu-latest
+    permissions:
+      # Checkout, and listing this repository's open issues for the sweep.
+      contents: read
+      issues: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      # The script uses Node built-ins and scripts/lib only; no npm install.
+      - name: Select exact npm
+        run: node scripts/install_exact_npm.mjs
+
+      - name: Split the uploads repository name
+        id: uploads-repo
+        env:
+          UPLOADS_REPO: ${{ vars.UPLOADS_REPO }}
+        run: |
+          echo "owner=${UPLOADS_REPO%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${UPLOADS_REPO#*/}" >> "$GITHUB_OUTPUT"
+
+      # The only place a write-capable token for the uploads repository is
+      # minted: contents write on that one repository (deleting a branch is a
+      # contents write), valid for under an hour. new-entry.yml mints a
+      # read-only one for scaffolding.
+      - name: Mint a token for the uploads repository
+        id: uploads-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.UPLOADS_APP_ID }}
+          private-key: ${{ secrets.UPLOADS_APP_PRIVATE_KEY }}
+          owner: ${{ steps.uploads-repo.outputs.owner }}
+          repositories: ${{ steps.uploads-repo.outputs.name }}
+          permission-contents: write
+
+      # Issue text reaches the script through `env:` only, never a `run:` line.
+      - name: Delete unneeded uploads
+        run: node scripts/uploads_cleanup.mjs
+        env:
+          MODE: ${{ github.event_name == 'issues' && 'closed' || github.event_name == 'pull_request' && 'pr-closed' || 'sweep' }}
+          # pr-closed: the issue is found from the draft branch name, which the
+          # script re-checks; the fork check is in the job's `if`.
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          UPLOADS_TOKEN: ${{ steps.uploads-token.outputs.token }}
+          UPLOADS_REPO: ${{ vars.UPLOADS_REPO }}
+          CATALOG_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR_ID: ${{ github.event.issue.user.id }}
+          DRY_RUN: ${{ inputs.dry_run }}

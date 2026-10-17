@@ -22,6 +22,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
+import { formatUploadRef } from './upload_refs.mjs';
+
 /** Allowed content types mapped to the extension we save them under. */
 const TYPE_EXTENSIONS = new Map([
   ['image/png', 'png'],
@@ -215,7 +217,7 @@ function fetchable(url) {
 }
 
 /** The size-cap message, phrased the same wherever the cap is hit. */
-function sizeCapMessage(limit) {
+export function sizeCapMessage(limit) {
   return `it is larger than the ${Math.round(limit / (1024 * 1024))} MB size cap`;
 }
 
@@ -232,7 +234,7 @@ function sizeCapMessage(limit) {
  * @param {() => void} onOverflow called before throwing, to abort the socket
  * @returns {Promise<Uint8Array>}
  */
-async function readCapped(body, limit, onOverflow) {
+export async function readCapped(body, limit, onOverflow) {
   /** @type {Uint8Array[]} */
   const chunks = [];
   let received = 0;
@@ -323,34 +325,41 @@ async function fetchImage(url, { fetchImpl, dnsImpl, timeoutMs, maxBytes, token 
 }
 
 /**
- * Fetch, verify and store image references.
+ * @typedef {object} ImageSource one candidate image, however its bytes arrive
+ * @property {string} label how warnings name it (the URL, for a URL)
+ * @property {string} [alt]
+ * @property {string} [skip] a warning that rules it out before any budget is spent
+ * @property {(maxBytes: number) => Promise<{bytes: Uint8Array, declared: string}|{warning: string}>} [load]
+ *   fetch at most `maxBytes`; `declared` is the extension the source claims
+ *   (`''` when that is not an allowed image type), `warning` a complete
+ *   sentence for a miss. A throw is reported as "Could not download <label>".
+ */
+
+/**
+ * Check and store images, whichever way their bytes arrive: the count cap, the
+ * shared size budget (each load is capped at what is left of it), the declared
+ * type, the magic bytes, the file naming and the write. The URL path
+ * (`downloadImages`) and the upload path (scripts/lib/uploads.mjs, through
+ * `downloadImages`' `resolveUpload`) both come through here, so there is one
+ * copy of these rules.
  *
- * @param {Array<{url: string, alt?: string}>} refs parsed image references
+ * @param {ImageSource[]} sources
  * @param {object} options
  * @param {string} options.destDir absolute folder the files are written to
  * @param {string} options.publicPrefix site-absolute prefix for `src`
- *   (e.g. `/catalog/my-entry/screenshots`)
- * @param {string} [options.altFallback] alt text used when the submitter gave none
+ * @param {string} [options.altFallback]
  * @param {number} [options.maxFiles]
  * @param {number} [options.maxTotalBytes]
- * @param {number} [options.timeoutMs]
- * @param {string} [options.token] GitHub token, sent to github.com hosts only
- * @param {typeof fetch} [options.fetchImpl] injected for tests
- * @param {{lookup: Function}} [options.dnsImpl] injected for tests
  * @param {{mkdirSync: Function, writeFileSync: Function}} [options.fsImpl] injected for tests
  * @returns {Promise<{items: Array<{src: string, alt: string}>, warnings: string[]}>}
  */
-export async function downloadImages(refs, options) {
+export async function saveImages(sources, options) {
   const {
     destDir,
     publicPrefix,
     altFallback = '',
     maxFiles = MAX_FILES,
     maxTotalBytes = MAX_TOTAL_BYTES,
-    timeoutMs = TIMEOUT_MS,
-    token = '',
-    fetchImpl = globalThis.fetch,
-    dnsImpl = dnsPromises,
     fsImpl = fs,
   } = options ?? {};
 
@@ -358,7 +367,7 @@ export async function downloadImages(refs, options) {
   const items = [];
   /** @type {string[]} */
   const warnings = [];
-  const candidates = Array.isArray(refs) ? refs : [];
+  const candidates = Array.isArray(sources) ? sources : [];
 
   if (candidates.length === 0) return { items, warnings };
   if (candidates.length > maxFiles) {
@@ -370,12 +379,12 @@ export async function downloadImages(refs, options) {
   let total = 0;
   let saved = 0;
 
-  for (const ref of candidates.slice(0, maxFiles)) {
-    const url = String(ref?.url ?? '');
-    const alt = String(ref?.alt ?? '').trim();
+  for (const source of candidates.slice(0, maxFiles)) {
+    const label = String(source?.label ?? '');
+    const alt = String(source?.alt ?? '').trim();
 
-    if (!fetchable(url)) {
-      warnings.push(`Skipped \`${url}\` — only http(s) image URLs can be downloaded.`);
+    if (source?.skip) {
+      warnings.push(source.skip);
       continue;
     }
 
@@ -384,41 +393,32 @@ export async function downloadImages(refs, options) {
     const remaining = maxTotalBytes - total;
     if (remaining <= 0) {
       warnings.push(
-        `Skipped ${url} — the images add up to more than ${Math.round(maxTotalBytes / (1024 * 1024))} MB.`
+        `Skipped ${label} — the images add up to more than ${Math.round(maxTotalBytes / (1024 * 1024))} MB.`
       );
       continue;
     }
 
     try {
-      const { response, bytes } = await fetchImage(url, {
-        fetchImpl,
-        dnsImpl,
-        timeoutMs,
-        maxBytes: remaining,
-        token,
-      });
-
-      if (!bytes) {
-        warnings.push(
-          `Could not download ${url} (HTTP ${response.status}). Left it out — re-add it in this pull request if it should be included.`
-        );
+      const loaded = await source.load(remaining);
+      if ('warning' in loaded) {
+        warnings.push(loaded.warning);
         continue;
       }
+      const { bytes, declared } = loaded;
 
-      const declared = extensionForContentType(response.headers?.get?.('content-type'));
       if (!declared) {
-        warnings.push(`Skipped ${url} — its content type is not PNG, JPEG, GIF or WebP.`);
+        warnings.push(`Skipped ${label} — its content type is not PNG, JPEG, GIF or WebP.`);
         continue;
       }
 
       const sniffed = sniffImageType(bytes);
       if (!sniffed) {
-        warnings.push(`Skipped ${url} — the file does not look like a PNG, JPEG, GIF or WebP image.`);
+        warnings.push(`Skipped ${label} — the file does not look like a PNG, JPEG, GIF or WebP image.`);
         continue;
       }
       if (total + bytes.length > maxTotalBytes) {
         warnings.push(
-          `Skipped ${url} — the images add up to more than ${Math.round(maxTotalBytes / (1024 * 1024))} MB.`
+          `Skipped ${label} — the images add up to more than ${Math.round(maxTotalBytes / (1024 * 1024))} MB.`
         );
         continue;
       }
@@ -431,10 +431,108 @@ export async function downloadImages(refs, options) {
       items.push({ src: `${publicPrefix}/${name}`, alt: alt || altFallback });
     } catch (error) {
       warnings.push(
-        `Could not download ${url} (${error.message}). Left it out — re-add it in this pull request if it should be included.`
+        `Could not download ${label} (${error.message}). Left it out — re-add it in this pull request if it should be included.`
       );
     }
   }
 
   return { items, warnings };
+}
+
+/**
+ * Fetch, verify and store image references.
+ *
+ * A URL reference is fetched here, under every rule at the top of this file.
+ * An `upload:` reference (`{ upload }`, scripts/lib/issue_body.mjs) is read
+ * through `resolveUpload` — scripts/lib/uploads.mjs, which holds its own
+ * credential; `token` is never used for it, and nothing from `resolveUpload`
+ * reaches the URL fetcher. Both then go through the same checks (`saveImages`).
+ *
+ * @param {Array<{url: string, alt?: string}|{upload: import('./upload_refs.mjs').UploadRef, alt?: string}>} refs
+ *   parsed image references
+ * @param {object} options
+ * @param {string} options.destDir absolute folder the files are written to
+ * @param {string} options.publicPrefix site-absolute prefix for `src`
+ *   (e.g. `/catalog/my-entry/screenshots`)
+ * @param {string} [options.altFallback] alt text used when the submitter gave none
+ * @param {number} [options.maxFiles]
+ * @param {number} [options.maxTotalBytes]
+ * @param {number} [options.timeoutMs]
+ * @param {string} [options.token] GitHub token, sent to github.com hosts only
+ * @param {(ref: import('./upload_refs.mjs').UploadRef, opts: {maxBytes: number}) => Promise<Uint8Array|{warning: string}>} [options.resolveUpload]
+ *   reads an `upload:` reference's bytes, capped at `maxBytes`
+ * @param {typeof fetch} [options.fetchImpl] injected for tests
+ * @param {{lookup: Function}} [options.dnsImpl] injected for tests
+ * @param {{mkdirSync: Function, writeFileSync: Function}} [options.fsImpl] injected for tests
+ * @returns {Promise<{items: Array<{src: string, alt: string}>, warnings: string[]}>}
+ */
+export async function downloadImages(refs, options) {
+  const {
+    timeoutMs = TIMEOUT_MS,
+    token = '',
+    resolveUpload = undefined,
+    fetchImpl = globalThis.fetch,
+    dnsImpl = dnsPromises,
+  } = options ?? {};
+
+  const sources = (Array.isArray(refs) ? refs : []).map((ref) => {
+    const alt = ref?.alt;
+    if (ref?.upload) return uploadSource(ref.upload, alt, resolveUpload);
+
+    const url = String(ref?.url ?? '');
+    if (!fetchable(url)) {
+      return { label: url, alt, skip: `Skipped \`${url}\` — only http(s) image URLs can be downloaded.` };
+    }
+    return {
+      label: url,
+      alt,
+      load: async (maxBytes) => {
+        const { response, bytes } = await fetchImage(url, { fetchImpl, dnsImpl, timeoutMs, maxBytes, token });
+        if (!bytes) {
+          return {
+            warning: `Could not download ${url} (HTTP ${response.status}). Left it out — re-add it in this pull request if it should be included.`,
+          };
+        }
+        return { bytes, declared: extensionForContentType(response.headers?.get?.('content-type')) };
+      },
+    };
+  });
+
+  return saveImages(sources, options);
+}
+
+/**
+ * How a warning names an `upload:` reference (images and attachments alike).
+ * @param {import('./upload_refs.mjs').UploadRef} upload
+ * @returns {string}
+ */
+export function uploadLabel(upload) {
+  return `the uploaded file \`${formatUploadRef(upload)}\``;
+}
+
+/** Image extensions an `upload:` reference may carry, as `saveImages` declares them. */
+const IMAGE_UPLOAD_EXTENSIONS = new Set(TYPE_EXTENSIONS.values());
+
+/**
+ * The `ImageSource` for one `upload:` reference. Its declared type is the
+ * reference's own extension, standing where a URL's Content-Type does.
+ * @param {import('./upload_refs.mjs').UploadRef} upload
+ * @param {string|undefined} alt
+ * @param {Function|undefined} resolveUpload
+ * @returns {ImageSource}
+ */
+function uploadSource(upload, alt, resolveUpload) {
+  const label = uploadLabel(upload);
+  if (typeof resolveUpload !== 'function') {
+    return { label, alt, skip: `Skipped ${label} — uploaded files cannot be collected here.` };
+  }
+  const declared = IMAGE_UPLOAD_EXTENSIONS.has(upload.ext) ? upload.ext : '';
+  return {
+    label,
+    alt,
+    load: async (maxBytes) => {
+      const result = await resolveUpload(upload, { maxBytes });
+      return result instanceof Uint8Array ? { bytes: result, declared } : result;
+    },
+  };
 }

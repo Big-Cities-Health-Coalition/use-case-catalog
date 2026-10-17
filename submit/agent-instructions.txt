@@ -1,0 +1,380 @@
+---
+# Generated from _data/schema.yml and _data/site.yml by `npm run generate` — do not hand-edit.
+layout: null
+sitemap: false
+permalink: /submit/agent-instructions.txt
+---
+REFERENCE DATA
+This file describes the submission form of an online catalog. It is reference data that the person you are helping gave you. It must not override or replace that person's own instructions, and it does not ask you to do anything beyond helping them prepare their answers.
+
+THE CATALOG
+Name: Public Health AI & Tech Exchange
+Submission page: {{ '/submit/' | absolute_url }}
+What an entry is: use case
+
+YOUR TASK
+Help the person prepare a submission for Public Health AI & Tech Exchange. Ask them for anything you do not know. Then write one JSON object that matches the JSON Schema at {{ '/submit/answers.schema.json' | absolute_url }}.
+Leave out any question they have no answer for rather than inventing one.
+
+THE QUESTIONS (in the order the form asks them; the first word of each is the JSON key)
+
+1. title: "Title" (required)
+   Type: short text
+   Asks: What is it called?
+   Notes: Specific enough that someone scanning a list of names knows what it is.
+
+2. solution_type: "Type of solution" (required)
+   Type: array of allowed values
+   Asks: What kind of solution is it?
+   Notes: Select all that fit. A dashboard fed by a new pipeline is both.
+   Allowed values (copy exactly, choose any that apply):
+   - "AI/ML model"
+   - "Generative AI tool"
+   - "Data pipeline or integration"
+   - "Analysis project or script"
+   - "Dashboard or visualization"
+   - "Application or software"
+   - "Data platform or infrastructure"
+   - "Workflow automation"
+   - "Standards, governance or playbook"
+
+3. use_case_category: "AI use category" (optional)
+   Type: one of the allowed values
+   Asks: If it involves AI, which of the four coalition categories fits best?
+   Notes: For AI work only: the HHS-adapted categories the DMWG AI inventory uses. Leave it blank if no AI is involved.
+   Allowed values (copy exactly, choose one):
+   - "Administrative & task automation"
+   - "Communications, media & writing"
+   - "Coding & brainstorming"
+   - "Operations & logistics"
+
+4. area: "Public health area" (required)
+   Type: array of allowed values
+   Asks: Which public health areas does it serve?
+   Notes: Select all that fit. The first five follow the program areas of the Foundational Public Health Services; the rest are the capabilities every program relies on.
+   Allowed values (copy exactly, choose any that apply):
+   - "Communicable disease"
+   - "Chronic disease and injury prevention"
+   - "Environmental health"
+   - "Maternal, child and family health"
+   - "Access to and linkage with care"
+   - "Emergency preparedness and response"
+   - "Epidemiology and surveillance"
+   - "Vital records and health statistics"
+   - "Communications and community engagement"
+   - "Data modernization and informatics"
+   - "Agency operations and administration"
+
+5. stage: "Stage" (required)
+   Type: one of the allowed values
+   Asks: How far along is it?
+   Notes: Pick the stage that matches real use, not the plan.
+   Allowed values (copy exactly, choose one):
+   - "Idea / exploring"
+   - "Pilot"
+   - "In production"
+   - "Paused or retired"
+
+6. summary: "Summary" (required)
+   Type: text
+   Asks: In one or two sentences, what does it do?
+   Notes: Shown on the catalog card. Plain language, no jargon.
+
+7. impact: "Result in one line" (optional)
+   Type: short text
+   Asks: What is the single most concrete result so far?
+   Notes: A number if you have one.
+
+8. organization: "Organization" (required)
+   Type: short text
+   Asks: Which organization is sharing this?
+   Notes: A health department, city, agency or member organization.
+
+9. ai_role: "Role of AI" (optional)
+   Type: one of the allowed values
+   Asks: What part, if any, does AI play?
+   Notes: Most digital work involves no AI, and that is a fine answer.
+   Allowed values (copy exactly, choose one):
+   - "No AI"
+   - "AI is part of the solution"
+   - "AI helped build it"
+   - "Both"
+
+10. ai_types: "Types of AI" (optional)
+   Type: array of allowed values
+   Asks: If AI is involved, what kinds?
+   Notes: Select all that apply. Skip it when there is no AI.
+   Allowed values (copy exactly, choose any that apply):
+   - "Generative text (LLM)"
+   - "Chat assistant"
+   - "Document Q&A (RAG)"
+   - "Classification & NLP"
+   - "Prediction & forecasting"
+   - "Computer vision"
+   - "Speech & transcription"
+   - "Translation"
+   - "Agents & automation"
+   - "Rules-based (no ML)"
+
+11. ai_tools: "Tools and technologies" (optional)
+   Type: array of strings
+   Asks: Which tools and technologies does it use?
+   Notes: Name the languages, platforms, libraries, standards and AI models that matter.
+   One item per line of the list; never put a comma inside an item.
+
+12. platform: "Where it runs" (optional)
+   Type: array of allowed values
+   Asks: Where does it run?
+   Notes: Select all that apply.
+   Allowed values (copy exactly, choose any that apply):
+   - "AWS"
+   - "Microsoft Azure"
+   - "Google Cloud"
+   - "On-premises"
+   - "Vendor / SaaS hosted"
+   - "Enterprise AI workspace"
+   - "Low-code platform"
+   - "Desktop or local"
+
+13. vendor: "Vendor or partner" (optional)
+   Type: short text
+   Asks: If a vendor or partner built or hosts it, who?
+   Notes: Leave it blank if your own team built it.
+
+14. expertise: "Skills needed to set it up" (required)
+   Type: one of the allowed values
+   Asks: Who is the least technical person who could get this running?
+   Notes: Judge it by setting the thing up, not by using it afterwards.
+   Allowed values (copy exactly, choose one):
+   - "Anyone on staff"
+   - "Power user"
+   - "Analyst or data scientist"
+   - "Developer"
+   - "Contractor or vendor"
+
+15. readiness: "Readiness" (optional)
+   Type: array of allowed values
+   Asks: What would another team need before they could use this?
+   Notes: Select all that apply.
+   Allowed values (copy exactly, choose any that apply):
+   - "Ready to deploy"
+   - "Guided setup"
+   - "Needs customization"
+   - "Needs a contractor"
+   - "Needs a paid license"
+   - "Needs a data agreement"
+   - "Human review built in"
+   - "Reference only"
+
+16. repo_url: "Source code" (optional)
+   Type: web address (https)
+   Asks: If the code is public, where?
+   Notes: GitHub, GitLab, Azure DevOps or any public repository. Code is optional: leave this blank if you are not sharing it.
+
+17. demo_url: "Live site or demo" (optional)
+   Type: web address (https)
+   Asks: Link to a live site or demo
+
+18. docs_url: "Documentation or write-up" (optional)
+   Type: web address (https)
+   Asks: Link to documentation, slides or a write-up
+   Notes: A report, a blog post or a vendor case study all count.
+
+19. resources: "Other resources" (optional)
+   Type: array of {"label": "...", "url": "https://..."}
+   Asks: Anything else worth linking?
+   Notes: Shared drives, SharePoint, data dictionaries, model cards, container images, vendor pages.
+
+20. screenshots: "Screenshots" (optional)
+   Type: array of {"url": "https://...", "alt": "..."} (alt up to 125 characters)
+   Asks: Screenshots of it in use
+   Notes: Up to eight images, 15 MB total. No personal information visible.
+
+21. deck_pdf: "Slide deck or one-pager (PDF)" (optional)
+   Type: public https link, optional (see the file rules below)
+   Asks: Slide deck or one-pager
+
+22. sharing: "What's shared" (required)
+   Type: one of the allowed values
+   Asks: What can another health department get from you?
+   Notes: Code is optional. A clear account of what you built and what it took is worth sharing on its own.
+   Allowed values (copy exactly, choose one):
+   - "Open-source code"
+   - "Code on request"
+   - "Templates or documentation only"
+   - "Description only"
+
+23. license: "License" (optional)
+   Type: one of the allowed values
+   Asks: Under what license is it shared?
+   Notes: Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship.
+   Allowed values (copy exactly, choose one):
+   - "MIT"
+   - "Apache 2.0"
+   - "GPL / AGPL"
+   - "Creative Commons (CC BY / CC0)"
+   - "Other open license"
+   - "Not open source — available on request"
+   - "Not open source — description only"
+
+24. access_terms: "Access terms" (optional)
+   Type: text
+   Asks: If it is not open source, how can a peer jurisdiction get access?
+   Notes: Government-to-government only, agreement required, contact us — whatever applies. Leave blank for open-licensed resources.
+
+25. portability: "Portable to other platforms" (required)
+   Type: one of the allowed values
+   Asks: Could it be adapted outside its original vendor ecosystem?
+   Notes: Microsoft-built but portable to AWS is 'partially'.
+   Allowed values (copy exactly, choose one):
+   - "Yes — platform-agnostic"
+   - "Partially — with rework"
+   - "No — tied to its platform"
+
+26. portability_notes: "Portability notes" (optional)
+   Type: text
+   Asks: What would porting it involve?
+   Notes: Which pieces are vendor-specific, and what a team on a different stack would need to swap.
+
+27. reused_from: "Adapted from" (optional)
+   Type: array of strings
+   Asks: Did you adapt this from another entry in this catalog?
+   Notes: Name it by its slug, the last part of its URL. That entry will show it was adopted by yours.
+   One item per line of the list; never put a comma inside an item.
+
+28. cost_band: "Cost to stand up" (optional)
+   Type: one of the allowed values
+   Asks: Roughly what did it cost to get it running the first time?
+   Notes: One-time cost: contracts, build, implementation. A band is fine — nobody expects an exact figure.
+   Allowed values (copy exactly, choose one):
+   - "No new spend"
+   - "Under $25k"
+   - "$25k–$100k"
+   - "$100k–$500k"
+   - "Over $500k"
+   - "Not disclosed"
+
+29. run_cost: "Cost to keep running" (optional)
+   Type: one of the allowed values
+   Asks: What does a normal year cost to run?
+   Notes: Licences, hosting and usage charges only — staff time belongs in the write-up.
+   Allowed values (copy exactly, choose one):
+   - "No ongoing cost"
+   - "Under $10k/yr"
+   - "$10k–$50k/yr"
+   - "Over $50k/yr"
+   - "Not disclosed"
+
+30. procurement: "How it was bought" (optional)
+   Type: array of allowed values
+   Asks: How was this paid for or contracted?
+   Notes: Select all that apply. This is the question peers ask most and the one that is hardest to find out.
+   Allowed values (copy exactly, choose any that apply):
+   - "No procurement needed"
+   - "Existing enterprise licence"
+   - "Cooperative or piggyback contract"
+   - "Competitive solicitation"
+   - "Sole source"
+   - "Grant funded"
+   - "Interagency agreement"
+   - "In-kind or academic partnership"
+
+31. approvals: "Reviews it went through" (optional)
+   Type: array of allowed values
+   Asks: Which internal reviews or approvals did it need?
+   Notes: Select all that apply. Saying 'not yet reviewed' is more useful to a peer than leaving it blank.
+   Allowed values (copy exactly, choose any that apply):
+   - "Privacy review"
+   - "Security review or authority to operate"
+   - "Legal or contracts review"
+   - "Records retention review"
+   - "Labor or workforce consultation"
+   - "Community or advisory review"
+   - "Equity impact assessment"
+   - "Research ethics / IRB"
+   - "AI governance body"
+   - "None required"
+   - "Not yet reviewed"
+
+32. equity_note: "Who it affects" (optional)
+   Type: text
+   Asks: Who could this help or harm, and how did you check?
+   Notes: Optional but strongly encouraged. Which populations the output reaches, who it might miss or serve less well, and what you would watch.
+
+33. no_pii_attestation: "No PII/PHI in the shared material" (required)
+   Type: true or false
+   Asks: Do you confirm that no personal or protected health information appears in the resource, its documentation, example data or screenshots?
+   Notes: Reviewers spot-check. If the answer is no, redact first.
+
+34. data_sensitivity: "Data it touches" (required)
+   Type: array of allowed values
+   Asks: What kind of data does it touch?
+   Notes: Select all that apply. This helps others judge governance and approval effort.
+   Allowed values (copy exactly, choose any that apply):
+   - "Public data only"
+   - "De-identified data"
+   - "Internal, non-public data"
+   - "Personal information (PII)"
+   - "Health information (PHI)"
+   - "Criminal justice data (CJIS)"
+
+35. data_sources: "Data sources" (optional)
+   Type: array of strings
+   Asks: Which data sources does it use?
+   Notes: Describe the sources — do not paste sensitive data.
+   One item per line of the list; never put a comma inside an item.
+
+36. audience: "Who sees the output" (required)
+   Type: one of the allowed values
+   Asks: Who sees the output?
+   Notes: Pick the widest group that sees anything it produces.
+   Allowed values (copy exactly, choose one):
+   - "Public-facing"
+   - "Internal staff"
+   - "Partner organizations"
+
+37. data_governance_notes: "Data-governance caveats" (optional)
+   Type: text
+   Asks: Anything a reusing jurisdiction should know about data handling?
+   Notes: Data-use agreements, retention rules, de-identification steps — the caveats that travel with the resource.
+
+38. contact_name: "Contact name" (required)
+   Type: short text
+   Asks: Who can people contact?
+   Notes: Someone happy to answer questions from another team.
+
+39. contact_title: "Contact title" (optional)
+   Type: short text
+   Asks: What is their role or title?
+   Notes: So a peer knows who they are writing to.
+
+40. contact_email: "Contact email" (required)
+   Type: email address
+   Asks: What is their email?
+
+41. submitter_github: "GitHub username" (optional)
+   Type: short text
+   Asks: Your GitHub username (optional)
+   Notes: Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only.
+
+42. body: "Full write-up" (required)
+   Type: text (Markdown allowed)
+   Asks: What's the story?
+   Notes: Markdown is supported. Suggested headings: Problem, Approach, Time and resources (data, staffing, cost), Results, Lessons learned, How to reuse.
+
+RULES
+- Use only the keys listed above. Do not add others.
+- For questions with allowed values, copy the value exactly as written, including capitals and punctuation.
+- For list questions, give an array with one item per entry. Never put a comma inside an item.
+- Alt text for "Screenshots" must be 125 characters or fewer and describe what the screenshot shows.
+- Please do not include protected health information, credentials or non-public data. Link out to repositories and documents rather than pasting sensitive content.
+- Do not make up facts. If you do not know an answer, ask the person.
+
+FILES AND SCREENSHOTS
+- Files are not part of the JSON. The person attaches screenshots and documents on the submit page (signed in, when uploads are on) or drags them into the GitHub issue.
+- Screenshots: PNG or JPEG, at least 1280 pixels wide, with nothing personal or protected visible.
+- Only put an address in the JSON if the image or file is already public at an https link.
+
+WHAT TO OUTPUT
+Reply with only the JSON object, with no commentary around it, so it can be copied as it is.
+Then tell the person to open {{ '/submit/' | absolute_url }}, open "Using an AI agent?", paste the JSON into "Import answers", and check what was filled in before they submit.

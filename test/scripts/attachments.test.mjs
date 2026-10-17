@@ -10,6 +10,7 @@ import {
   isGitHubAttachmentUrl,
   matchesExtension,
   shouldDownload,
+  storeAttachment,
 } from '../../scripts/lib/attachments.mjs';
 
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
@@ -251,4 +252,76 @@ test('attachmentValue keeps the link when a file could not be fetched', () => {
   );
   assert.equal(attachmentValue('image', { saved: true, publicPath, url }), publicPath);
   assert.equal(attachmentValue('image', { saved: false, publicPath, url }), '');
+});
+
+// The upload path (scripts/lib/uploads.mjs) and the URL path share one copy of
+// the checks (`storeAttachment`).
+
+test('bytes from an upload meet exactly the checks bytes from a URL do', async () => {
+  // [case, filename, body, maxBytes, expected warning]
+  const cases = [
+    ['HTML named as a PDF', 'deck.pdf', HTML, undefined, /does not look like PDF/],
+    ['a PNG named as a PDF', 'deck.pdf', PNG, undefined, /does not look like PDF/],
+    ['a PNG named as a JPEG', 'photo.jpg', PNG, undefined, /does not look like JPG/],
+    ['an extension nobody can verify', 'deck.exe', PDF, undefined, /`deck\.exe` is not one of/],
+    ['a file over the cap', 'deck.pdf', PDF, PDF.length - 1, /larger than the .* size cap/],
+  ];
+  for (const [name, filename, body, maxBytes, expected] of cases) {
+    const viaUrl = stubFs();
+    const fromUrl = await downloadAttachment('https://example.org/x', {
+      ...base,
+      filename,
+      maxBytes,
+      fsImpl: viaUrl,
+      fetchImpl: async () => stubResponse(body),
+    });
+    const viaUpload = stubFs();
+    const fromUpload = await storeAttachment('the uploaded file `upload:x`', async () => body, {
+      destDir: base.destDir,
+      filename,
+      maxBytes,
+      fsImpl: viaUpload,
+    });
+    for (const [result, files] of [
+      [fromUrl, viaUrl],
+      [fromUpload, viaUpload],
+    ]) {
+      assert.equal(result.saved, false, name);
+      assert.match(result.warning, expected, name);
+      assert.equal(files.written.size, 0, name);
+    }
+    assert.match(fromUpload.warning, /^Could not attach the uploaded file `upload:x` \(/, name);
+  }
+});
+
+test('storeAttachment writes good bytes under the schema’s name and passes the cap to the loader', async () => {
+  const fsImpl = stubFs();
+  const caps = [];
+  const result = await storeAttachment(
+    'the uploaded file',
+    async (maxBytes) => {
+      caps.push(maxBytes);
+      return PDF;
+    },
+    { destDir: base.destDir, filename: 'deck.pdf', fsImpl }
+  );
+  assert.deepEqual(result, { saved: true, bytes: PDF.length, warning: '' });
+  assert.deepEqual(caps, [MAX_ATTACHMENT_BYTES]);
+  assert.deepEqual([...fsImpl.written.keys()], [path.join('/repo/catalog/brief', 'deck.pdf')]);
+});
+
+test('storeAttachment never calls the loader for a name it cannot verify, and keeps a loader’s own warning', async () => {
+  const refused = await storeAttachment('x', () => assert.fail('no load'), {
+    destDir: base.destDir,
+    filename: 'deck.docx',
+    fsImpl: stubFs(),
+  });
+  assert.equal(refused.saved, false);
+
+  const missing = await storeAttachment('x', async () => ({ warning: 'It may have expired.' }), {
+    destDir: base.destDir,
+    filename: 'deck.pdf',
+    fsImpl: stubFs(),
+  });
+  assert.deepEqual(missing, { saved: false, bytes: 0, warning: 'It may have expired.' });
 });

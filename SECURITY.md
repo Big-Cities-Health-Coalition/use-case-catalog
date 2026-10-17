@@ -108,6 +108,42 @@ See [docs/admin-guide.md](docs/admin-guide.md#checks-on-a-generated-pull-request
 Every `uses:` in `.github/workflows/` names a full commit SHA with the release
 tag in a trailing comment. Dependabot proposes updates weekly.
 
+## File uploads on the submit page (optional)
+
+Off unless a deployment sets `submit.uploads_url`. Then a signed-in submitter can attach screenshots
+and a PDF deck on `/submit/` through a small service the deployment runs
+([`services/uploads/`](services/uploads/README.md)). What that changes:
+
+- **The service stores nothing.** No database, no file storage, nothing on disk. It checks each file
+  (origin, a real PNG, JPEG, WebP or PDF judged by its bytes, at most 4 MB, per-person caps) and writes
+  it to a **private** GitHub repository in the same request. It has no runtime dependencies.
+- **A private repository does not keep screenshots private.** It protects drafts that were never
+  submitted and stops the service being an anonymous file host. Once a submission is scaffolded, its
+  files are committed to a public `entry/*` draft branch and shown in the draft pull request before
+  anyone has reviewed them, just as files dragged into an issue are public the moment they are attached.
+  The page tells submitters not to show personal information; reviewers still open every picture at
+  full size ([docs/incidents.md](docs/incidents.md)).
+- **The submitter's sign-in token goes to the upload service too.** Without uploads it is sent only to
+  `api.github.com`. With uploads the page also sends it to the service the deployment runs, which uses
+  it for one `GET /user` call to learn who is uploading and never logs, stores or forwards it. It can
+  do only what the sign-in App allows, and cannot touch the uploads repository.
+- **A reference cannot name someone else's files.** The scaffolder builds the branch name itself from
+  the issue author's numeric id, so a reference copied into another person's issue finds nothing, and
+  no reference can name another repository. It re-hashes every file and rejects a mismatch.
+- **The uploads token is read-only and reaches one step.** The scaffold job mints a token that can
+  read contents of the uploads repository only, hands it to the scaffold step alone, and the generic
+  image and attachment fetchers (which send their token to any GitHub host a submitter names) never
+  see it. Deleting uses a separate write token minted only in `uploads-cleanup.yml`, whose deletion
+  targets always come from the repository's own branch listing; issue text can only cause a set to be
+  kept.
+- **Deleted is not erased.** One parentless commit per file means deleting a branch leaves the file
+  unreachable, but git keeps it until GitHub garbage-collects. To purge something sensitive at once,
+  contact GitHub Support. The procedure is in
+  [docs/admin-guide.md](docs/admin-guide.md#files-attached-on-the-submit-page).
+
+Report a problem with the upload service the same way as any other: see
+[Reporting a vulnerability](#reporting-a-vulnerability) below.
+
 ## Who can submit
 
 Open by default: the catalog is meant to collect work from people without
