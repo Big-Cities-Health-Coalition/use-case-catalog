@@ -54,3 +54,5 @@ docs/bchc/**                                 merge=ours
 .github/ISSUE_TEMPLATE/new-entry.yml         merge=ours
 .github/ISSUE_TEMPLATE/config.yml            merge=ours
 assets/js/configurator/defaults.generated.js merge=ours
+submit/answers.schema.json                   merge=ours
+submit/agent-instructions.txt                merge=ours
