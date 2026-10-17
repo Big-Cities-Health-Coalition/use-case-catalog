@@ -12,10 +12,14 @@ export const GENERATOR_OUTPUTS = Object.freeze([
   '.github/ISSUE_TEMPLATE/new-entry.yml',
   '_config.yml',
   '.github/ISSUE_TEMPLATE/config.yml',
+  'submit/answers.schema.json',
+  'submit/agent-instructions.txt',
 ]);
 
 export const DERIVED_OUTPUTS = Object.freeze([
   'assets/js/configurator/defaults.generated.js',
   '.github/ISSUE_TEMPLATE/new-entry.yml',
   '.github/ISSUE_TEMPLATE/config.yml',
+  'submit/answers.schema.json',
+  'submit/agent-instructions.txt',
 ]);
