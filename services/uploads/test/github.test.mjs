@@ -98,6 +98,35 @@ test('the installation token is reused until five minutes before it expires, the
   assert.equal(github.calls.length, 8);
 });
 
+test('installationToken takes both forms of installation token GitHub issues', async () => {
+  for (const token of ['ghs_' + 'I'.repeat(36), INSTALL_TOKEN]) {
+    clearInstallationTokenCache();
+    const github = fakeGitHub({
+      routes: {
+        [`POST /app/installations/${INSTALLATION_ID}/access_tokens`]: () =>
+          json(201, { token, expires_at: new Date(NOW + 60 * 60 * 1000).toISOString() }),
+      },
+    });
+    assert.equal(await installationToken({ fetch: github, now: () => NOW }, CONFIG), token);
+  }
+  assert.ok(INSTALL_TOKEN.length > 500 && /[.-]/.test(INSTALL_TOKEN), 'the fixture is the long form');
+  for (const token of [
+    'ghs_' + 'I'.repeat(35),
+    `${INSTALL_TOKEN} x`,
+    `${INSTALL_TOKEN}\nx`,
+    'ghu_' + 'I'.repeat(36),
+  ]) {
+    clearInstallationTokenCache();
+    const github = fakeGitHub({
+      routes: {
+        [`POST /app/installations/${INSTALLATION_ID}/access_tokens`]: () =>
+          json(201, { token, expires_at: new Date(NOW + 60 * 60 * 1000).toISOString() }),
+      },
+    });
+    await assert.rejects(installationToken({ fetch: github, now: () => NOW }, CONFIG), GitHubError);
+  }
+});
+
 test('installationToken refuses an answer without a usable token', async () => {
   const github = fakeGitHub({
     routes: { [`POST /app/installations/${INSTALLATION_ID}/access_tokens`]: () => json(201, { token: 'x' }) },

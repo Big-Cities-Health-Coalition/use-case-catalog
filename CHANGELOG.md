@@ -8,6 +8,20 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.13] — 2026-10-17
+
+Thirteenth candidate. It carries rc.12 plus one fix to the upload service, so a
+deployment's own copy of `services/uploads` matches what is deployed. It changes
+no `.github/workflows` file relative to rc.12 and adds no generated outputs.
+
+### Fixed
+
+- The upload service refused every upload with "GitHub could not save the file
+  just now". Since 2026 GitHub issues App installation tokens in a longer,
+  stateless form (`ghs_<app id>_<JWT>`, about 520 characters, with `.` and `-`),
+  and the service only accepted the old 40-character form. It now accepts both,
+  using GitHub's published pattern. Submitters' sign-in tokens are unaffected.
+
 ## [1.11.0-rc.12] — 2026-10-16
 
 Twelfth candidate. rc.11 failed closed in a deployment's update (nothing was
@@ -1796,7 +1810,8 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.12...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.13...HEAD
+[1.11.0-rc.13]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.12...v1.11.0-rc.13
 [1.11.0-rc.12]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.11...v1.11.0-rc.12
 [1.11.0-rc.11]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.10...v1.11.0-rc.11
 [1.11.0-rc.10]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.9...v1.11.0-rc.10
