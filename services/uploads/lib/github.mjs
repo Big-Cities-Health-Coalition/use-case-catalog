@@ -30,8 +30,15 @@ export const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const DEFAULT_RETRY_AFTER = 60;
 const MAX_RETRY_AFTER = 3600;
 
-/** GitHub user and installation tokens: an opaque `gh?_…`/`github_pat_…` string. */
+/** GitHub user tokens: an opaque `gh?_…`/`github_pat_…` string. */
 export const TOKEN_PATTERN = /^[A-Za-z0-9_]{20,512}$/;
+
+/**
+ * GitHub App installation tokens: the opaque `ghs_` + 36 characters, or since
+ * 2026 a stateless `ghs_<app id>_<JWT>` of about 520 characters with `.` and
+ * `-` in it. GitHub's own pattern; it gives no upper length.
+ */
+export const INSTALLATION_TOKEN_PATTERN = /^ghs_[A-Za-z0-9._-]{36,}$/;
 
 /**
  * A GitHub call that did not succeed.
@@ -213,7 +220,11 @@ export async function installationToken(deps, config) {
     body: { repositories: [config.repo], permissions: { contents: 'write' } },
   });
   const expiresAt = Date.parse(minted?.expires_at ?? '');
-  if (typeof minted?.token !== 'string' || !TOKEN_PATTERN.test(minted.token) || !Number.isFinite(expiresAt)) {
+  if (
+    typeof minted?.token !== 'string' ||
+    !INSTALLATION_TOKEN_PATTERN.test(minted.token) ||
+    !Number.isFinite(expiresAt)
+  ) {
     throw new GitHubError('failed', 201, { message: 'token endpoint answered without a usable token' });
   }
   cachedToken = { key, token: minted.token, expiresAt };

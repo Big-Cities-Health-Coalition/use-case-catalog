@@ -10,7 +10,8 @@ export const SITE = 'https://acme.github.io';
 export const OWNER = 'acme';
 export const REPO = 'catalog-uploads';
 export const USER_TOKEN = 'ghu_' + 'U'.repeat(36);
-export const INSTALL_TOKEN = 'ghs_' + 'I'.repeat(36);
+/** The stateless form GitHub has issued since 2026: `ghs_<app id>_<JWT>`, about 520 characters. */
+export const INSTALL_TOKEN = `ghs_123456_${'eyJ' + 'I'.repeat(60)}.${'eyJ' + 'P-_'.repeat(100)}.${'S'.repeat(140)}`;
 export const USER_ID = 4242;
 export const INSTALLATION_ID = 77;
 export const SET = 'abcdefghijklmnopqrstuvwx23';
