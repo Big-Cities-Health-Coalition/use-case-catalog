@@ -29,7 +29,13 @@
  * [data-direct-copy] (the intro's two versions of the last step, one shown);
  * [data-review-status] (rendered by review.js when `handlers.direct` is set).
  *
- * Exposes: window.SubmitForm.initDirect
+ * The object initDirect returns also lets assets/js/submit/uploads.js (file
+ * uploads, only when `submit.uploads_url` is set) use the sign-in: `token()`
+ * hands out the bearer token for a request to the upload service (never to be
+ * stored or logged), `userId()` / `login()` say whose it is, `onChange(fn)`
+ * reports every sign-in state change, and `expire()` treats the token as dead.
+ *
+ * Exposes: window.SubmitForm.initDirect, .serviceOrigin
  */
 (function (ns) {
   'use strict';
@@ -65,10 +71,14 @@
     return url.protocol === 'https:' || local ? url.origin : '';
   }
 
+  ns.serviceOrigin = serviceOrigin;
+
   /**
    * Wire "Sign in with GitHub" into the page.
    * @param {HTMLFormElement} form
-   * @returns {null|{signedIn: () => boolean, login: () => string, submit: (options: object) => void}}
+   * @returns {null|{signedIn: () => boolean, login: () => string, userId: () => number|null,
+   *   token: () => string|null, onChange: (fn: () => void) => void, expire: () => void,
+   *   submit: (options: object) => void}}
    *   null when the site has no sign-in service (or no repository to send to)
    */
   ns.initDirect = function initDirect(form) {
@@ -86,6 +96,10 @@
     /** Fallback when sessionStorage is refused: the token lives as long as the page. */
     let memory = null;
     let login = '';
+    /** GitHub's numeric id for the signed-in account, once GitHub has been asked. */
+    let userId = null;
+    /** Callbacks told whenever the sign-in state is repainted. */
+    const listeners = [];
     /** The sign-in window in progress: {popup, resolve, timer}. */
     let pending = null;
     let inFlight = false;
@@ -123,6 +137,7 @@
     function clearToken() {
       memory = null;
       login = '';
+      userId = null;
       try {
         window.sessionStorage.removeItem(storeKey);
       } catch {
@@ -160,6 +175,18 @@
 
     /** @param {'out'|'checking'|'in'} state */
     function paint(state) {
+      paintControls(state);
+      listeners.forEach((listener) => {
+        try {
+          listener();
+        } catch {
+          // A listener's trouble is not the sign-in's.
+        }
+      });
+    }
+
+    /** @param {'out'|'checking'|'in'} state */
+    function paintControls(state) {
       // The intro's "what happens" steps, outside any template: say which
       // route a press of the last button will take.
       const signed = state !== 'out';
@@ -229,12 +256,14 @@
           }
           return response.json().then((user) => {
             login = user && LOGIN_PATTERN.test(String(user.login)) ? String(user.login) : '';
+            userId = user && Number.isInteger(user.id) && user.id > 0 ? user.id : null;
             paint('in');
           });
         })
         .catch(() => {
           // GitHub out of reach: keep the token, and say only that it is there.
           login = '';
+          userId = null;
           paint(readToken() ? 'in' : 'out');
         });
     }
@@ -561,6 +590,20 @@
     return {
       signedIn: () => readToken() !== null,
       login: () => login,
+      userId: () => (readToken() !== null ? userId : null),
+      token: () => {
+        const saved = readToken();
+        return saved ? saved.token : null;
+      },
+      onChange: (listener) => {
+        listeners.push(listener);
+      },
+      // A service that took the token said it is no longer good.
+      expire: () => {
+        clearToken();
+        paint('out');
+        sayNote('Your GitHub sign-in has expired. Sign in again to submit from this page.');
+      },
       submit: submit,
     };
   };

@@ -27,7 +27,10 @@
    * Bump the version segment when the stored shape changes *incompatibly*.
    * The optional `ui` key (stepper position, short-form mode) rode in without
    * a bump on purpose: readers on either side ignore keys they don't know, so
-   * a bump would only have thrown away everyone's saved answers.
+   * a bump would only have thrown away everyone's saved answers. So did the
+   * optional `uploads` key (files attached through assets/js/submit/uploads.js):
+   * `{set, user: {id, login}, files: {<field key>: [{ref, name, alt, bytes, kind}]}}`.
+   * It holds references only — never a sign-in token, never file contents.
    */
   const KEY_PREFIX = 'catalog-template:submit-draft:v2';
   const DEBOUNCE_MS = 500;
@@ -87,11 +90,16 @@
    * typed answers are still not in storage — the one case worth a warning.
    * @param {HTMLFormElement} form
    * @param {object[]} fields descriptors from readFields
-   * @param {(ui: object|null) => void} onRestore called after a draft is
-   *   written into the form, with the draft's saved UI state (or null)
+   * @param {(ui: object|null, uploads: object|null) => void} onRestore called
+   *   after a draft is written into the form, with the draft's saved UI state
+   *   and uploaded-files record (or null)
    * @param {(() => object|null)|undefined} uiState reads the UI state (stepper
    *   position, short-form mode) to store beside the answers
-   * @returns {{save: Function, clear: Function, flush: Function, unsaved: () => boolean}}
+   * @returns {{save: Function, clear: Function, flush: Function, unsaved: () => boolean,
+   *   trackUploads: (read: () => object|null) => void}}
+   *   `trackUploads` registers the reader of the uploaded-files record stored
+   *   beside the answers (null for none); a draft restored later hands the
+   *   record it holds to `onRestore` as its second argument.
    */
   ns.initDraft = function initDraft(form, fields, onRestore, uiState) {
     const key = storageKey(form);
@@ -124,6 +132,16 @@
     // True after the kept draft is restored and until its answers are saved
     // under `key`: until then `:previous` is still the only stored copy.
     let dropKept = false;
+    // Reads the uploaded-files record to store beside the answers; see trackUploads.
+    let uploadsState = null;
+
+    /** @returns {object|null} the uploaded-files record, when it names any file */
+    function uploadsRecord() {
+      const record = uploadsState ? uploadsState() : null;
+      if (!record || !record.files) return null;
+      const any = Object.keys(record.files).some((name) => record.files[name].length > 0);
+      return any ? record : null;
+    }
 
     /** @returns {object} the current answers, keyed by schema key */
     function snapshot() {
@@ -183,7 +201,8 @@
       timer = null;
       if (held) return;
       const data = snapshot();
-      const empty = Object.keys(data).length === 0;
+      const uploads = uploadsRecord();
+      const empty = Object.keys(data).length === 0 && !uploads;
       if (!memory) {
         dirty = !empty;
         return;
@@ -206,6 +225,7 @@
       const payload = { saved: stamp, fields: data };
       const ui = uiState ? uiState() : null;
       if (ui) payload.ui = ui;
+      if (uploads) payload.uploads = uploads;
       // A failed setItem leaves the key as it was, so the offered draft stays
       // under `key` until the new answers have actually replaced it; the copy
       // under `:previous` is undone if they have not.
@@ -282,7 +302,7 @@
 
     /**
      * @param {string} from storage key
-     * @returns {{saved: string, fields: object, ui: object|null}|null} the stored draft, if any
+     * @returns {{saved: string, fields: object, ui: object|null, uploads: object|null}|null} the stored draft, if any
      */
     function read(from) {
       if (!memory) return null;
@@ -293,6 +313,7 @@
           saved: String(parsed.saved || ''),
           fields: parsed.fields,
           ui: parsed.ui && typeof parsed.ui === 'object' ? parsed.ui : null,
+          uploads: parsed.uploads && typeof parsed.uploads === 'object' ? parsed.uploads : null,
         };
       } catch (error) {
         return null;
@@ -326,7 +347,7 @@
       offered = '';
       if (bar) bar.hidden = true;
       setStatus(message);
-      onRestore(draft.ui);
+      onRestore(draft.ui, draft.uploads);
       savedAt = '';
       save();
     }
@@ -398,7 +419,7 @@
         // After the caller has finished starting up: the answers are in place
         // for its controllers to read, but the stepper and short-form mode the
         // saved UI state moves do not exist until initDraft has returned.
-        Promise.resolve().then(() => onRestore(existing.ui));
+        Promise.resolve().then(() => onRestore(existing.ui, existing.uploads));
       } else if (existing) offerRestore(existing, key);
       else if (kept) offerRestore(kept, previousKey);
     }
@@ -475,6 +496,14 @@
       }
     });
 
-    return { save: save, clear: clear, flush: flush, unsaved: unsaved };
+    return {
+      save: save,
+      clear: clear,
+      flush: flush,
+      unsaved: unsaved,
+      trackUploads: function trackUploads(read) {
+        uploadsState = read;
+      },
+    };
   };
 })((window.SubmitForm = window.SubmitForm || {}));

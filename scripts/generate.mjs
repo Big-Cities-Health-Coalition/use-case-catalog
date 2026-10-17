@@ -9,6 +9,7 @@
  * Writes  .github/ISSUE_TEMPLATE/new-entry.yml          (public submission form)
  * Syncs   _config.yml title/description from _data/site.yml (SEO fallbacks)
  * Writes  .github/ISSUE_TEMPLATE/config.yml          (public/private report routing)
+ * Writes  submit/answers.schema.json, submit/agent-instructions.txt  ("Using an AI agent?" on /submit/)
  * Writes  .github/ISSUE_TEMPLATE/<optional form>     (only while the site uses it;
  *         removed otherwise — cohort forms, Apply setup; see scripts/issue-forms/)
  * Syncs   _data/site.yml links into this repository's own files (footer guide link)
@@ -29,6 +30,7 @@ import {
   renderIssueChooser,
   setupFormsEnabled,
 } from '../assets/js/configurator/issue-chooser.js';
+import { agentInstructionsFile, answersSchemaFile } from './lib/agent_files.mjs';
 import { pointRepositoryLinks } from './lib/generate_plan.mjs';
 import { checkIssueForms, describeIssueFormProblems } from './lib/issue_forms.mjs';
 import {
@@ -38,8 +40,15 @@ import {
 } from './lib/optional_issue_forms.mjs';
 
 const ROOT = process.cwd();
-const [SITE_DATA_PATH, generatedDefaultsPath, ISSUE_TEMPLATE_PATH, CONFIG_PATH, CONTACT_LINKS_PATH] =
-  GENERATOR_OUTPUTS;
+const [
+  SITE_DATA_PATH,
+  generatedDefaultsPath,
+  ISSUE_TEMPLATE_PATH,
+  CONFIG_PATH,
+  CONTACT_LINKS_PATH,
+  ANSWERS_SCHEMA_PATH,
+  AGENT_INSTRUCTIONS_PATH,
+] = GENERATOR_OUTPUTS;
 
 if (generatedDefaultsPath !== DEFAULTS_PATH) {
   throw new Error(`Generator path mismatch: ${generatedDefaultsPath} !== ${DEFAULTS_PATH}`);
@@ -168,6 +177,13 @@ if (formProblems) {
   );
 }
 sync(ISSUE_TEMPLATE_PATH, issueTemplate, `${fieldCount} fields`);
+
+// --- 3a. files for people using an AI agent ---------------------------------
+// The instructions and the JSON Schema /submit/ links under "Using an AI
+// agent?" — built from the same schema, so the options cannot drift.
+
+sync(ANSWERS_SCHEMA_PATH, answersSchemaFile(schema, site));
+sync(AGENT_INSTRUCTIONS_PATH, agentInstructionsFile(schema, site));
 
 // --- 3b. optional issue forms -----------------------------------------------
 // GitHub shows every form in .github/ISSUE_TEMPLATE/ and has no way to hide

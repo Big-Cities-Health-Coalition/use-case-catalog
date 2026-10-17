@@ -1,0 +1,11 @@
+{
+  "name": "phct-uploads",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Optional upload service for a PHCT /submit/ page: takes a screenshot or PDF from a signed-in submitter and writes it to the deployment's private GitHub uploads repository. Deployed as its own Vercel project from this directory.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  }
+}

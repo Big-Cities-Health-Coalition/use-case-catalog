@@ -3,6 +3,8 @@
  * Scaffold a catalog entry from a GitHub issue-form submission.
  *
  * Input (env):   ISSUE_BODY, ISSUE_TITLE, ISSUE_NUMBER, GITHUB_TOKEN (optional)
+ *                UPLOADS_TOKEN, UPLOADS_REPO, ISSUE_AUTHOR_ID (optional, all three
+ *                or none: files attached on /submit/, read by scripts/lib/uploads.mjs)
  * Output:        <entry path>/<slug>/index.md
  *                <entry path>/<slug>/screenshots/NN.<ext>  (downloaded images)
  *                <entry path>/<slug>/<filename>            (uploaded attachments)
@@ -29,8 +31,10 @@ import * as yaml from 'js-yaml';
 import { fail, setOutput } from './lib/actions_output.mjs';
 import { frontMatter } from './lib/yaml.mjs';
 import { escalations, reviewChecklist } from './lib/review.mjs';
-import { attachmentValue, downloadAttachment, shouldDownload } from './lib/attachments.mjs';
-import { downloadImages, MAX_FILES } from './lib/images.mjs';
+import { attachmentValue, downloadAttachment, shouldDownload, storeAttachment } from './lib/attachments.mjs';
+import { downloadImages, MAX_FILES, uploadLabel } from './lib/images.mjs';
+import { formatUploadRef } from './lib/upload_refs.mjs';
+import { notConfiguredWarning, uploadResolver } from './lib/uploads.mjs';
 import {
   NO_RESPONSE,
   codeSpan,
@@ -166,24 +170,66 @@ function insideEntryDir(target) {
   return resolved;
 }
 
+// --- uploads ---------------------------------------------------------------
+// Files attached on /submit/ arrive as `upload:` lines (docs/submit-uploads-plan.md)
+// and are read from the deployment's private uploads repository by
+// scripts/lib/uploads.mjs — the only code that touches its token, which is why
+// the whole environment is handed over rather than the token picked out here.
+// The bytes then go through exactly the checks a downloaded file does. Not set
+// up: each answer holding `upload:` lines gets one warning and the rest of the
+// submission scaffolds as usual.
+
+const uploads = uploadResolver(process.env);
+let uploadsProblemLogged = false;
+
+/**
+ * The warning for an answer whose `upload:` lines cannot be read on this
+ * catalog; the reason, for a maintainer, goes to the job log once.
+ * @param {object} field schema field
+ * @param {number} count
+ * @returns {string}
+ */
+function uploadsUnavailable(field, count) {
+  if (!uploadsProblemLogged) {
+    console.error(`upload: references skipped: ${uploads.problem}.`);
+    uploadsProblemLogged = true;
+  }
+  return notConfiguredWarning(field.label || field.key, count);
+}
+
 // --- images ----------------------------------------------------------------
 
 /** @type {Record<string, Array<{src: string, alt: string}>>} */
 const imageValues = {};
 
 for (const field of fields.filter((f) => f.type === 'images')) {
-  const refs = parseImageRefs(rawValue(sections, field));
+  let refs = parseImageRefs(rawValue(sections, field));
   if (refs.length === 0) {
     imageValues[field.key] = [];
     continue;
   }
+  const uploadRefs = refs.filter((ref) => ref.upload);
   if (DRY_RUN) {
     imageValues[field.key] = refs.map((ref, index) => ({
       src: `/${entryPath}/${slug}/screenshots/${String(index + 1).padStart(2, '0')}.png`,
       alt: ref.alt || `${title} — screenshot ${index + 1}`,
     }));
-    warnings.push(`Dry run: ${refs.length} image URL(s) were parsed but not downloaded.`);
+    const urlCount = refs.length - uploadRefs.length;
+    if (urlCount > 0) warnings.push(`Dry run: ${urlCount} image URL(s) were parsed but not downloaded.`);
+    if (uploadRefs.length > 0) {
+      warnings.push(
+        `Dry run: ${uploadRefs.map((ref) => `\`${formatUploadRef(ref.upload)}\``).join(', ')} parsed but not fetched.`
+      );
+    }
     continue;
+  }
+  if (uploadRefs.length > 0 && !uploads.ok) {
+    warnings.push(uploadsUnavailable(field, uploadRefs.length));
+    refs = refs.filter((ref) => !ref.upload);
+    if (refs.length === 0) {
+      imageValues[field.key] = [];
+      continue;
+    }
   }
   const result = await downloadImages(refs, {
     destDir: path.join(entryDir, 'screenshots'),
@@ -191,6 +237,9 @@ for (const field of fields.filter((f) => f.type === 'images')) {
     altFallback: `${title} — screenshot`,
     maxFiles: maxImages,
     token: process.env.GITHUB_TOKEN || '',
+    resolveUpload: uploads.ok
+      ? (upload, opts) => uploads.resolve(upload, { ...opts, field: field.label || field.key })
+      : undefined,
     fsImpl: {
       mkdirSync: (dir, opts) => fs.mkdirSync(insideEntryDir(dir), opts),
       writeFileSync: (file, data) => fs.writeFileSync(insideEntryDir(file), data),
@@ -227,7 +276,14 @@ for (const field of fields.filter((f) => f.type === 'file' || f.type === 'image'
     attachmentValues[field.key] = '';
     continue;
   }
-  if (!shouldDownload(field.type, ref.url)) {
+  // A file attached on /submit/ is always saved into the entry folder, never
+  // kept as a link (there is no public URL to keep).
+  if (ref.upload && DRY_RUN) {
+    attachmentValues[field.key] = publicPath;
+    warnings.push(`Dry run: \`${formatUploadRef(ref.upload)}\` was parsed but not fetched.`);
+    continue;
+  }
+  if (!ref.upload && !shouldDownload(field.type, ref.url)) {
     // Stored only in the shape the page renders and the validator accepts; a
     // link that cannot be one is reported rather than committed as a dead row.
     const link = siteHttpUrl(ref.url);
@@ -245,19 +301,32 @@ for (const field of fields.filter((f) => f.type === 'file' || f.type === 'image'
     continue;
   }
 
-  const result = await downloadAttachment(ref.url, {
+  const store = {
     destDir: entryDir,
     filename,
-    token: process.env.GITHUB_TOKEN || '',
     fsImpl: {
       mkdirSync: (dir, opts) => fs.mkdirSync(insideEntryDir(dir), opts),
       writeFileSync: (file, data) => fs.writeFileSync(insideEntryDir(file), data),
     },
-  });
+  };
+  let result;
+  if (!ref.upload) {
+    result = await downloadAttachment(ref.url, { ...store, token: process.env.GITHUB_TOKEN || '' });
+  } else if (!uploads.ok) {
+    result = { saved: false, bytes: 0, warning: uploadsUnavailable(field, 1) };
+  } else {
+    result = await storeAttachment(
+      uploadLabel(ref.upload),
+      (maxBytes) => uploads.resolve(ref.upload, { maxBytes, field: field.label || field.key }),
+      store
+    );
+  }
+  // An upload that could not be read has no link to keep: the value is what a
+  // GitHub attachment whose link cannot be kept gets.
   attachmentValues[field.key] = attachmentValue(field.type, {
     saved: result.saved,
     publicPath,
-    url: ref.url,
+    url: ref.url ?? '',
   });
   if (result.saved) {
     savedAttachments.push(publicPath);

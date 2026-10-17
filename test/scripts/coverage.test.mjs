@@ -6,7 +6,7 @@ import { COVERAGE_GROUPS, coverageArguments, parseCoverageSummary } from '../../
 test('coverage groups include explicit security-parser and updater expectations', () => {
   assert.deepEqual(
     COVERAGE_GROUPS.map((group) => group.id),
-    ['full', 'signin-service', 'security-parsers', 'updater-workflows']
+    ['full', 'signin-service', 'uploads-service', 'security-parsers', 'updater-workflows']
   );
   for (const group of COVERAGE_GROUPS) {
     assert.ok(group.thresholds.lines > 0);

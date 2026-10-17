@@ -7,6 +7,7 @@ import {
   extensionForContentType,
   ipv6Groups,
   isBlockedAddress,
+  saveImages,
   sniffImageType,
 } from '../../scripts/lib/images.mjs';
 
@@ -464,4 +465,155 @@ test('a streamed body under the cap is reassembled byte for byte', async () => {
   assert.deepEqual(result.items, [{ src: '/p/01.png', alt: 'Fine' }]);
   assert.deepEqual(result.warnings, []);
   assert.deepEqual(new Uint8Array([...files.written.values()][0]), PNG);
+});
+
+// The upload path (scripts/lib/uploads.mjs, through `resolveUpload`) and the
+// URL path share one copy of the checks (`saveImages`).
+
+const SET = 'abcdefghijklmnopqrstuvwxyz';
+const upload = (char, ext) => ({ set: SET, sha256: char.repeat(64), ext });
+
+test('bytes from an upload meet exactly the checks bytes from a URL do', async () => {
+  // [case, URL body + content type, upload body + reference extension, expected warning]
+  const cases = [
+    [
+      'bytes that are not an image',
+      [TEXT, 'image/png'],
+      [TEXT, 'png'],
+      /does not look like a PNG, JPEG, GIF or WebP/,
+    ],
+    [
+      'a type that is not an image',
+      [PNG, 'image/svg+xml'],
+      [PNG, 'pdf'],
+      /content type is not PNG, JPEG, GIF or WebP/,
+    ],
+    ['an HTML page', [TEXT, 'text/html'], [TEXT, 'pdf'], /content type is not/],
+  ];
+  for (const [name, [urlBytes, contentType], [uploadBytes, ext], expected] of cases) {
+    const viaUrl = stubFs();
+    const fromUrl = await downloadImages([{ url: 'https://e.org/x' }], {
+      destDir: '/d',
+      publicPrefix: '/p',
+      dnsImpl: PUBLIC_DNS,
+      fsImpl: viaUrl,
+      fetchImpl: async () => stubResponse(urlBytes, contentType),
+    });
+    const viaUpload = stubFs();
+    const fromUpload = await downloadImages([{ upload: upload('a', ext) }], {
+      destDir: '/d',
+      publicPrefix: '/p',
+      fsImpl: viaUpload,
+      resolveUpload: async () => uploadBytes,
+      fetchImpl: () => assert.fail('an upload never goes through the URL fetcher'),
+    });
+    for (const [result, files] of [
+      [fromUrl, viaUrl],
+      [fromUpload, viaUpload],
+    ]) {
+      assert.deepEqual(result.items, [], name);
+      assert.equal(result.warnings.length, 1, name);
+      assert.match(result.warnings[0], expected, name);
+      assert.equal(files.written.size, 0, name);
+    }
+    assert.match(fromUpload.warnings[0], /^Skipped the uploaded file `upload:/, name);
+  }
+});
+
+test('an upload is held to the shared size budget, before and after it is read', async () => {
+  const budgets = [];
+  const files = stubFs();
+  const result = await downloadImages(
+    [{ url: 'https://e.org/a.png' }, { upload: upload('a', 'png') }, { upload: upload('b', 'png') }],
+    {
+      destDir: '/d',
+      publicPrefix: '/p',
+      maxTotalBytes: PNG.length * 2 - 1,
+      dnsImpl: PUBLIC_DNS,
+      fsImpl: files,
+      fetchImpl: async () => stubResponse(PNG, 'image/png'),
+      // Misbehaves: ignores the cap it is given, so the shared total check has to catch it.
+      resolveUpload: async (_ref, { maxBytes }) => {
+        budgets.push(maxBytes);
+        return PNG;
+      },
+    }
+  );
+  assert.deepEqual(budgets, [PNG.length - 1, PNG.length - 1], 'each read is capped at what is left');
+  assert.equal(result.items.length, 1);
+  assert.equal(result.warnings.length, 2);
+  for (const warning of result.warnings) assert.match(warning, /the images add up to more than/);
+  assert.equal(files.written.size, 1);
+});
+
+test('uploads and URLs are numbered in one sequence, and only URLs reach the fetcher', async () => {
+  const fetched = [];
+  const resolved = [];
+  const files = stubFs();
+  const result = await downloadImages(
+    [
+      { upload: upload('a', 'png'), alt: 'Landing page' },
+      { url: 'https://github.com/user-attachments/assets/b.jpg', alt: 'Queue' },
+      { upload: upload('c', 'webp') },
+    ],
+    {
+      destDir: '/d',
+      publicPrefix: '/p',
+      altFallback: 'X — screenshot',
+      token: 'job-token',
+      dnsImpl: PUBLIC_DNS,
+      fsImpl: files,
+      fetchImpl: async (url, init) => {
+        fetched.push([url, init.headers.authorization]);
+        return stubResponse(JPG, 'image/jpeg');
+      },
+      resolveUpload: async (...args) => {
+        resolved.push(args);
+        return args[0].ext === 'png' ? PNG : WEBP;
+      },
+    }
+  );
+  assert.deepEqual(result.items, [
+    { src: '/p/01.png', alt: 'Landing page' },
+    { src: '/p/02.jpg', alt: 'Queue' },
+    { src: '/p/03.webp', alt: 'X — screenshot' },
+  ]);
+  assert.deepEqual(fetched, [['https://github.com/user-attachments/assets/b.jpg', 'Bearer job-token']]);
+  // The resolver is handed the reference and a cap, and nothing else: no token.
+  assert.deepEqual(
+    resolved.map(([ref, opts]) => [ref.sha256[0], Object.keys(opts)]),
+    [
+      ['a', ['maxBytes']],
+      ['c', ['maxBytes']],
+    ]
+  );
+});
+
+test('an upload the resolver cannot find is left out with the resolver’s own warning', async () => {
+  const result = await downloadImages([{ upload: upload('a', 'png') }, { upload: upload('b', 'png') }], {
+    destDir: '/d',
+    publicPrefix: '/p',
+    fsImpl: stubFs(),
+    resolveUpload: async (ref) => {
+      if (ref.sha256[0] === 'a') return { warning: 'It may have expired.' };
+      throw new Error('the file does not match its upload reference');
+    },
+  });
+  assert.deepEqual(result.items, []);
+  assert.equal(result.warnings[0], 'It may have expired.');
+  assert.match(
+    result.warnings[1],
+    /^Could not download the uploaded file `upload:abcdefghijklmnopqrstuvwxyz\/b{64}\.png` \(the file does not match its upload reference\)\. Left it out/
+  );
+});
+
+test('without a resolver an upload is skipped, not guessed at', async () => {
+  const result = await downloadImages([{ upload: upload('a', 'png') }], {
+    destDir: '/d',
+    publicPrefix: '/p',
+    fsImpl: stubFs(),
+  });
+  assert.deepEqual(result.items, []);
+  assert.match(result.warnings[0], /cannot be collected here/);
+  assert.deepEqual(await saveImages([], { destDir: '/d', publicPrefix: '/p' }), { items: [], warnings: [] });
 });

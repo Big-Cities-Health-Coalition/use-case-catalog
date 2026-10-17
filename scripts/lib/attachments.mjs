@@ -17,7 +17,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { MAX_REDIRECTS, TIMEOUT_MS, assertPublicHost, sniffImageType } from './images.mjs';
+import {
+  MAX_REDIRECTS,
+  TIMEOUT_MS,
+  assertPublicHost,
+  readCapped,
+  sizeCapMessage,
+  sniffImageType,
+} from './images.mjs';
 import { siteHttpUrl } from './issue_body.mjs';
 
 /** GitHub caps an issue-form upload at 25 MB for documents. */
@@ -122,32 +129,115 @@ export function attachmentValue(fieldType, { saved, publicPath, url }) {
 }
 
 /**
- * Read a body stream, aborting the moment it crosses `limit`.
- * @param {AsyncIterable<Uint8Array>} body
- * @param {number} limit
- * @param {() => void} onOverflow
+ * Check and store one attachment, whichever way its bytes arrive: the schema's
+ * extension must be one this module can verify, the bytes must fit `maxBytes`
+ * and match that extension, and the file is written as `filename`. The URL path
+ * (`downloadAttachment`) and the upload path (scripts/lib/uploads.mjs) both come
+ * through here, so there is one copy of these rules.
+ *
+ * @param {string} label how the warning names the file (the URL, for a URL)
+ * @param {(maxBytes: number) => Promise<Uint8Array|{warning: string}>} load
+ *   fetch at most `maxBytes`; `warning` is a complete sentence for a miss, a
+ *   throw is reported as "Could not attach <label> (<message>)."
+ * @param {object} options
+ * @param {string} options.destDir absolute folder to write into
+ * @param {string} options.filename name the schema asked for (`deck.pdf`)
+ * @param {number} [options.maxBytes]
+ * @param {{mkdirSync: Function, writeFileSync: Function}} [options.fsImpl] injected for tests
+ * @returns {Promise<{saved: boolean, bytes: number, warning: string}>}
+ */
+export async function storeAttachment(label, load, options) {
+  const { destDir, filename, maxBytes = MAX_ATTACHMENT_BYTES, fsImpl = fs } = options ?? {};
+
+  const name = String(filename ?? '').trim();
+  const extension = (/\.[a-z0-9]+$/i.exec(name)?.[0] ?? '').toLowerCase();
+  const miss = (reason) => ({ saved: false, bytes: 0, warning: `Could not attach ${label} (${reason}).` });
+
+  if (!extension || !acceptedExtensions().includes(extension)) {
+    return miss(`\`${name}\` is not one of ${acceptedExtensions().join(', ')}`);
+  }
+
+  try {
+    const loaded = await load(maxBytes);
+    if (!(loaded instanceof Uint8Array)) return { saved: false, bytes: 0, warning: loaded.warning };
+    if (loaded.length > maxBytes) return miss(sizeCapMessage(maxBytes));
+    if (!matchesExtension(extension, loaded)) {
+      return miss(`the file does not look like ${extension.replace('.', '').toUpperCase()}`);
+    }
+
+    fsImpl.mkdirSync(destDir, { recursive: true });
+    fsImpl.writeFileSync(path.join(destDir, name), loaded);
+    return { saved: true, bytes: loaded.length, warning: '' };
+  } catch (error) {
+    return miss(error.message);
+  }
+}
+
+/**
+ * Fetch one attachment's bytes: every redirect hop followed by hand and its
+ * host re-checked, the body read against `maxBytes`, the abort timer armed
+ * until the body is in. Throws with the reason on any miss.
+ *
+ * @param {string} link
+ * @param {object} options
+ * @param {number} options.maxBytes
+ * @param {number} options.timeoutMs
+ * @param {string} options.token GitHub token, sent to github.com hosts only
+ * @param {typeof fetch} options.fetchImpl
+ * @param {{lookup: Function}|undefined} options.dnsImpl
  * @returns {Promise<Uint8Array>}
  */
-async function readCapped(body, limit, onOverflow) {
-  /** @type {Uint8Array[]} */
-  const chunks = [];
-  let received = 0;
-  for await (const chunk of body) {
-    const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-    received += bytes.byteLength;
-    if (received > limit) {
-      onOverflow();
-      throw new Error(`it is larger than the ${Math.round(limit / (1024 * 1024))} MB size cap`);
+async function fetchAttachment(link, { maxBytes, timeoutMs, token, fetchImpl, dnsImpl }) {
+  let parsed;
+  try {
+    parsed = new URL(link);
+  } catch {
+    throw new Error('it is not a URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('only http(s) attachments can be downloaded');
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let current = link;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      // Re-checked on every hop: a public URL that redirects to 169.254.169.254
+      // is the whole reason the redirects are followed by hand.
+      await (dnsImpl ? assertPublicHost(current, dnsImpl) : assertPublicHost(current));
+
+      const headers = {};
+      if (token && /(^|\.)github(usercontent)?\.com$/i.test(new URL(current).hostname)) {
+        headers.authorization = `Bearer ${token}`;
+      }
+      const response = await fetchImpl(current, { redirect: 'manual', signal: controller.signal, headers });
+      if (!response) throw new Error('no response');
+
+      const status = Number(response.status);
+      const location = response.headers?.get?.('location');
+      if (status >= 300 && status < 400 && location) {
+        const next = new URL(location, current);
+        if (next.protocol !== 'http:' && next.protocol !== 'https:') {
+          throw new Error(`it redirects to a ${next.protocol} URL`);
+        }
+        current = next.toString();
+        continue;
+      }
+      if (!response.ok) throw new Error(`HTTP ${status}`);
+
+      const declared = Number(response.headers?.get?.('content-length'));
+      if (Number.isFinite(declared) && declared > maxBytes) throw new Error(sizeCapMessage(maxBytes));
+
+      const streamed = typeof response.body?.[Symbol.asyncIterator] === 'function';
+      return streamed
+        ? await readCapped(response.body, maxBytes, () => controller.abort())
+        : new Uint8Array(await response.arrayBuffer());
     }
-    chunks.push(bytes);
+    throw new Error(`it redirects more than ${MAX_REDIRECTS} times`);
+  } finally {
+    clearTimeout(timer);
   }
-  const out = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
 }
 
 /**
@@ -167,86 +257,15 @@ async function readCapped(body, limit, onOverflow) {
  */
 export async function downloadAttachment(url, options) {
   const {
-    destDir,
-    filename,
-    maxBytes = MAX_ATTACHMENT_BYTES,
     timeoutMs = TIMEOUT_MS,
     token = '',
     fetchImpl = globalThis.fetch,
     dnsImpl = undefined,
-    fsImpl = fs,
   } = options ?? {};
-
-  const name = String(filename ?? '').trim();
-  const extension = (/\.[a-z0-9]+$/i.exec(name)?.[0] ?? '').toLowerCase();
   const link = String(url ?? '').trim();
-  const miss = (reason) => ({ saved: false, bytes: 0, warning: `Could not attach ${link} (${reason}).` });
-
-  if (!extension || !acceptedExtensions().includes(extension)) {
-    return miss(`\`${name}\` is not one of ${acceptedExtensions().join(', ')}`);
-  }
-  let parsed;
-  try {
-    parsed = new URL(link);
-  } catch {
-    return miss('it is not a URL');
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return miss('only http(s) attachments can be downloaded');
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    let current = link;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      // Re-checked on every hop: a public URL that redirects to 169.254.169.254
-      // is the whole reason the redirects are followed by hand.
-      await (dnsImpl ? assertPublicHost(current, dnsImpl) : assertPublicHost(current));
-
-      const headers = {};
-      if (token && /(^|\.)github(usercontent)?\.com$/i.test(new URL(current).hostname)) {
-        headers.authorization = `Bearer ${token}`;
-      }
-      const response = await fetchImpl(current, { redirect: 'manual', signal: controller.signal, headers });
-      if (!response) return miss('no response');
-
-      const status = Number(response.status);
-      const location = response.headers?.get?.('location');
-      if (status >= 300 && status < 400 && location) {
-        const next = new URL(location, current);
-        if (next.protocol !== 'http:' && next.protocol !== 'https:') {
-          return miss(`it redirects to a ${next.protocol} URL`);
-        }
-        current = next.toString();
-        continue;
-      }
-      if (!response.ok) return miss(`HTTP ${status}`);
-
-      const declared = Number(response.headers?.get?.('content-length'));
-      if (Number.isFinite(declared) && declared > maxBytes) {
-        return miss(`it is larger than the ${Math.round(maxBytes / (1024 * 1024))} MB size cap`);
-      }
-
-      const streamed = typeof response.body?.[Symbol.asyncIterator] === 'function';
-      const bytes = streamed
-        ? await readCapped(response.body, maxBytes, () => controller.abort())
-        : new Uint8Array(await response.arrayBuffer());
-      if (bytes.length > maxBytes) {
-        return miss(`it is larger than the ${Math.round(maxBytes / (1024 * 1024))} MB size cap`);
-      }
-      if (!matchesExtension(extension, bytes)) {
-        return miss(`the file does not look like ${extension.replace('.', '').toUpperCase()}`);
-      }
-
-      fsImpl.mkdirSync(destDir, { recursive: true });
-      fsImpl.writeFileSync(path.join(destDir, name), bytes);
-      return { saved: true, bytes: bytes.length, warning: '' };
-    }
-    return miss(`it redirects more than ${MAX_REDIRECTS} times`);
-  } catch (error) {
-    return miss(error.message);
-  } finally {
-    clearTimeout(timer);
-  }
+  return storeAttachment(
+    link,
+    (maxBytes) => fetchAttachment(link, { maxBytes, timeoutMs, token, fetchImpl, dnsImpl }),
+    options
+  );
 }

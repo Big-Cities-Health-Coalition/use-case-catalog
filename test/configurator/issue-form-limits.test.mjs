@@ -244,7 +244,14 @@ test('issueFormProblems names each broken rule and where it is', () => {
 /** A throwaway copy of what generate.mjs reads, sharing this checkout's node_modules. */
 function scratchRepository() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-form-limits-'));
-  for (const dir of ['_data', '_includes', 'scripts', 'assets/js/configurator', '.github/ISSUE_TEMPLATE']) {
+  for (const dir of [
+    '_data',
+    '_includes',
+    'scripts',
+    'submit',
+    'assets/js/configurator',
+    '.github/ISSUE_TEMPLATE',
+  ]) {
     fs.cpSync(path.join(ROOT, dir), path.join(root, dir), { recursive: true });
   }
   fs.copyFileSync(path.join(ROOT, '_config.yml'), path.join(root, '_config.yml'));

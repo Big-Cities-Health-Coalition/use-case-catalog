@@ -186,6 +186,7 @@ submit:
   review_note: "…"          # safety callout beside the form, and the first block of the GitHub issue form
   fallback_email: "…"       # the "Email it instead" button; false turns email submissions off
   signin_url: ""            # optional "Sign in with GitHub, submit directly" service address (see below)
+  uploads_url: ""           # optional file-upload service address; needs signin_url (see below)
 ```
 
 `accepting: false` replaces the form with a "Submissions are paused" notice — using
@@ -231,9 +232,29 @@ before you turn it on there. Leave it blank (the default) and
 the page is exactly as before. It has no effect when the site has no GitHub
 repository configured, or when the schema has no `title` field. File questions
 cannot be sent this way: after a direct submission the page tells the
-submitter to add any file by editing the new issue on GitHub. How these issues
+submitter to add any file by editing the new issue on GitHub, unless
+`uploads_url` (below) is also set. How these issues
 reach the automation, and what to check when one does not, is in
 [admin-guide.md → Direct submissions](admin-guide.md#direct-submissions-sign-in-with-github).
+
+`uploads_url` turns on **attach files on the submit page**. A signed-in
+submitter gets a file picker on the screenshots question and on each file
+question (the slide deck), each file uploads as soon as it is picked, and the
+issue carries a reference to it instead of asking the submitter to drag the file
+onto GitHub afterwards. The value is the address of a second small service you
+deploy yourself from [`services/uploads/`](../services/uploads/README.md), with
+its own GitHub App and a private uploads repository; the README walks through
+the setup, including the repository variable and secrets the catalog's
+workflows need. Use the service's origin only, for example
+`"https://catalog-uploads.vercel.app"`: `https://`, no path, no trailing slash
+(`http://localhost` is accepted for local testing). It **needs `signin_url`**,
+because only signed-in submitters can upload. `npm run validate` checks both:
+the address must be a usable origin, and `uploads_url` without `signin_url`
+fails. Leave it blank (the default) and the page is exactly as before. The
+submitter's sign-in token is sent to this service as well as to GitHub, so only
+point it at a service you run. Files are limited to 4 MB each. What reviewers
+see, the limits and the clean-up are in
+[admin-guide.md → Files attached on the submit page](admin-guide.md#files-attached-on-the-submit-page).
 
 The shape of the form follows the schema, with nothing to configure here: when
 `schema.groups` has more than one group the form opens as one step per group

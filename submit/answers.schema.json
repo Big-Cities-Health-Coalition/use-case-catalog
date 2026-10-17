@@ -1,0 +1,496 @@
+---
+# Generated from _data/schema.yml and _data/site.yml by `npm run generate` — do not hand-edit.
+layout: null
+sitemap: false
+permalink: /submit/answers.schema.json
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "{{ '/submit/answers.schema.json' | absolute_url }}",
+  "title": "Public Health AI & Tech Exchange: answers for a new use case",
+  "description": "The answers to the submission form at {{ '/submit/' | absolute_url }}, one property per question, keyed by the question's key. Leave out any question you do not have an answer for. Files are not part of this JSON: the submitter attaches them on the submit page (or drags them into the GitHub issue).",
+  "type": "object",
+  "properties": {
+    "title": {
+      "title": "Title",
+      "description": "What is it called? Specific enough that someone scanning a list of names knows what it is.",
+      "type": "string",
+      "minLength": 1
+    },
+    "solution_type": {
+      "title": "Type of solution",
+      "description": "What kind of solution is it? Select all that fit. A dashboard fed by a new pipeline is both.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "AI/ML model",
+          "Generative AI tool",
+          "Data pipeline or integration",
+          "Analysis project or script",
+          "Dashboard or visualization",
+          "Application or software",
+          "Data platform or infrastructure",
+          "Workflow automation",
+          "Standards, governance or playbook"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "use_case_category": {
+      "title": "AI use category",
+      "description": "If it involves AI, which of the four coalition categories fits best? For AI work only: the HHS-adapted categories the DMWG AI inventory uses. Leave it blank if no AI is involved.",
+      "type": "string",
+      "enum": [
+        "Administrative & task automation",
+        "Communications, media & writing",
+        "Coding & brainstorming",
+        "Operations & logistics"
+      ]
+    },
+    "area": {
+      "title": "Public health area",
+      "description": "Which public health areas does it serve? Select all that fit. The first five follow the program areas of the Foundational Public Health Services; the rest are the capabilities every program relies on.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Communicable disease",
+          "Chronic disease and injury prevention",
+          "Environmental health",
+          "Maternal, child and family health",
+          "Access to and linkage with care",
+          "Emergency preparedness and response",
+          "Epidemiology and surveillance",
+          "Vital records and health statistics",
+          "Communications and community engagement",
+          "Data modernization and informatics",
+          "Agency operations and administration"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "stage": {
+      "title": "Stage",
+      "description": "How far along is it? Pick the stage that matches real use, not the plan.",
+      "type": "string",
+      "enum": [
+        "Idea / exploring",
+        "Pilot",
+        "In production",
+        "Paused or retired"
+      ]
+    },
+    "summary": {
+      "title": "Summary",
+      "description": "In one or two sentences, what does it do? Shown on the catalog card. Plain language, no jargon.",
+      "type": "string",
+      "minLength": 1
+    },
+    "impact": {
+      "title": "Result in one line",
+      "description": "What is the single most concrete result so far? A number if you have one.",
+      "type": "string"
+    },
+    "organization": {
+      "title": "Organization",
+      "description": "Which organization is sharing this? A health department, city, agency or member organization.",
+      "type": "string",
+      "minLength": 1
+    },
+    "ai_role": {
+      "title": "Role of AI",
+      "description": "What part, if any, does AI play? Most digital work involves no AI, and that is a fine answer.",
+      "type": "string",
+      "enum": [
+        "No AI",
+        "AI is part of the solution",
+        "AI helped build it",
+        "Both"
+      ]
+    },
+    "ai_types": {
+      "title": "Types of AI",
+      "description": "If AI is involved, what kinds? Select all that apply. Skip it when there is no AI.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Generative text (LLM)",
+          "Chat assistant",
+          "Document Q&A (RAG)",
+          "Classification & NLP",
+          "Prediction & forecasting",
+          "Computer vision",
+          "Speech & transcription",
+          "Translation",
+          "Agents & automation",
+          "Rules-based (no ML)"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "ai_tools": {
+      "title": "Tools and technologies",
+      "description": "Which tools and technologies does it use? Name the languages, platforms, libraries, standards and AI models that matter. Each item is one line of its own. Never put a comma inside an item.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^,\\r\\n]+$"
+      }
+    },
+    "platform": {
+      "title": "Where it runs",
+      "description": "Where does it run? Select all that apply.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "AWS",
+          "Microsoft Azure",
+          "Google Cloud",
+          "On-premises",
+          "Vendor / SaaS hosted",
+          "Enterprise AI workspace",
+          "Low-code platform",
+          "Desktop or local"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "vendor": {
+      "title": "Vendor or partner",
+      "description": "If a vendor or partner built or hosts it, who? Leave it blank if your own team built it.",
+      "type": "string"
+    },
+    "expertise": {
+      "title": "Skills needed to set it up",
+      "description": "Who is the least technical person who could get this running? Judge it by setting the thing up, not by using it afterwards.",
+      "type": "string",
+      "enum": [
+        "Anyone on staff",
+        "Power user",
+        "Analyst or data scientist",
+        "Developer",
+        "Contractor or vendor"
+      ]
+    },
+    "readiness": {
+      "title": "Readiness",
+      "description": "What would another team need before they could use this? Select all that apply.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Ready to deploy",
+          "Guided setup",
+          "Needs customization",
+          "Needs a contractor",
+          "Needs a paid license",
+          "Needs a data agreement",
+          "Human review built in",
+          "Reference only"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "repo_url": {
+      "title": "Source code",
+      "description": "If the code is public, where? GitHub, GitLab, Azure DevOps or any public repository. Code is optional: leave this blank if you are not sharing it.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$"
+    },
+    "demo_url": {
+      "title": "Live site or demo",
+      "description": "Link to a live site or demo.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$"
+    },
+    "docs_url": {
+      "title": "Documentation or write-up",
+      "description": "Link to documentation, slides or a write-up. A report, a blog post or a vendor case study all count.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$"
+    },
+    "resources": {
+      "title": "Other resources",
+      "description": "Anything else worth linking? Shared drives, SharePoint, data dictionaries, model cards, container images, vendor pages. Each link is a short label and a web address.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Short text saying where the link goes."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://\\S+$"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "screenshots": {
+      "title": "Screenshots",
+      "description": "Screenshots of it in use. Up to eight images, 15 MB total. No personal information visible. Only images already hosted at a public https address; each needs alt text of at most 125 characters saying what the screenshot shows. Files are not part of this JSON: the submitter attaches them on the submit page (or drags them into the GitHub issue).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://\\S+$"
+          },
+          "alt": {
+            "type": "string",
+            "maxLength": 125
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "deck_pdf": {
+      "title": "Slide deck or one-pager (PDF)",
+      "description": "Slide deck or one-pager. Only a public https link. Files are not part of this JSON: the submitter attaches them on the submit page (or drags them into the GitHub issue).",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$"
+    },
+    "sharing": {
+      "title": "What's shared",
+      "description": "What can another health department get from you? Code is optional. A clear account of what you built and what it took is worth sharing on its own.",
+      "type": "string",
+      "enum": [
+        "Open-source code",
+        "Code on request",
+        "Templates or documentation only",
+        "Description only"
+      ]
+    },
+    "license": {
+      "title": "License",
+      "description": "Under what license is it shared? Optional if only a description is shared. The coalition default is a permissive license (MIT, Apache 2.0, CC BY). Your organization keeps authorship.",
+      "type": "string",
+      "enum": [
+        "MIT",
+        "Apache 2.0",
+        "GPL / AGPL",
+        "Creative Commons (CC BY / CC0)",
+        "Other open license",
+        "Not open source — available on request",
+        "Not open source — description only"
+      ]
+    },
+    "access_terms": {
+      "title": "Access terms",
+      "description": "If it is not open source, how can a peer jurisdiction get access? Government-to-government only, agreement required, contact us — whatever applies. Leave blank for open-licensed resources.",
+      "type": "string"
+    },
+    "portability": {
+      "title": "Portable to other platforms",
+      "description": "Could it be adapted outside its original vendor ecosystem? Microsoft-built but portable to AWS is 'partially'.",
+      "type": "string",
+      "enum": [
+        "Yes — platform-agnostic",
+        "Partially — with rework",
+        "No — tied to its platform"
+      ]
+    },
+    "portability_notes": {
+      "title": "Portability notes",
+      "description": "What would porting it involve? Which pieces are vendor-specific, and what a team on a different stack would need to swap.",
+      "type": "string"
+    },
+    "reused_from": {
+      "title": "Adapted from",
+      "description": "Did you adapt this from another entry in this catalog? Name it by its slug, the last part of its URL. That entry will show it was adopted by yours. Each item is one line of its own. Never put a comma inside an item.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^,\\r\\n]+$"
+      }
+    },
+    "cost_band": {
+      "title": "Cost to stand up",
+      "description": "Roughly what did it cost to get it running the first time? One-time cost: contracts, build, implementation. A band is fine — nobody expects an exact figure.",
+      "type": "string",
+      "enum": [
+        "No new spend",
+        "Under $25k",
+        "$25k–$100k",
+        "$100k–$500k",
+        "Over $500k",
+        "Not disclosed"
+      ]
+    },
+    "run_cost": {
+      "title": "Cost to keep running",
+      "description": "What does a normal year cost to run? Licences, hosting and usage charges only — staff time belongs in the write-up.",
+      "type": "string",
+      "enum": [
+        "No ongoing cost",
+        "Under $10k/yr",
+        "$10k–$50k/yr",
+        "Over $50k/yr",
+        "Not disclosed"
+      ]
+    },
+    "procurement": {
+      "title": "How it was bought",
+      "description": "How was this paid for or contracted? Select all that apply. This is the question peers ask most and the one that is hardest to find out.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "No procurement needed",
+          "Existing enterprise licence",
+          "Cooperative or piggyback contract",
+          "Competitive solicitation",
+          "Sole source",
+          "Grant funded",
+          "Interagency agreement",
+          "In-kind or academic partnership"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "approvals": {
+      "title": "Reviews it went through",
+      "description": "Which internal reviews or approvals did it need? Select all that apply. Saying 'not yet reviewed' is more useful to a peer than leaving it blank.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Privacy review",
+          "Security review or authority to operate",
+          "Legal or contracts review",
+          "Records retention review",
+          "Labor or workforce consultation",
+          "Community or advisory review",
+          "Equity impact assessment",
+          "Research ethics / IRB",
+          "AI governance body",
+          "None required",
+          "Not yet reviewed"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "equity_note": {
+      "title": "Who it affects",
+      "description": "Who could this help or harm, and how did you check? Optional but strongly encouraged. Which populations the output reaches, who it might miss or serve less well, and what you would watch.",
+      "type": "string"
+    },
+    "no_pii_attestation": {
+      "title": "No PII/PHI in the shared material",
+      "description": "Do you confirm that no personal or protected health information appears in the resource, its documentation, example data or screenshots? Reviewers spot-check. If the answer is no, redact first.",
+      "type": "boolean"
+    },
+    "data_sensitivity": {
+      "title": "Data it touches",
+      "description": "What kind of data does it touch? Select all that apply. This helps others judge governance and approval effort.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Public data only",
+          "De-identified data",
+          "Internal, non-public data",
+          "Personal information (PII)",
+          "Health information (PHI)",
+          "Criminal justice data (CJIS)"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "data_sources": {
+      "title": "Data sources",
+      "description": "Which data sources does it use? Describe the sources — do not paste sensitive data. Each item is one line of its own. Never put a comma inside an item.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^,\\r\\n]+$"
+      }
+    },
+    "audience": {
+      "title": "Who sees the output",
+      "description": "Who sees the output? Pick the widest group that sees anything it produces.",
+      "type": "string",
+      "enum": [
+        "Public-facing",
+        "Internal staff",
+        "Partner organizations"
+      ]
+    },
+    "data_governance_notes": {
+      "title": "Data-governance caveats",
+      "description": "Anything a reusing jurisdiction should know about data handling? Data-use agreements, retention rules, de-identification steps — the caveats that travel with the resource.",
+      "type": "string"
+    },
+    "contact_name": {
+      "title": "Contact name",
+      "description": "Who can people contact? Someone happy to answer questions from another team.",
+      "type": "string",
+      "minLength": 1
+    },
+    "contact_title": {
+      "title": "Contact title",
+      "description": "What is their role or title? So a peer knows who they are writing to.",
+      "type": "string"
+    },
+    "contact_email": {
+      "title": "Contact email",
+      "description": "What is their email?",
+      "type": "string",
+      "format": "email",
+      "minLength": 1
+    },
+    "submitter_github": {
+      "title": "GitHub username",
+      "description": "Your GitHub username (optional). Used once a year, when this entry is due to be re-confirmed, so the reminder reaches you. Leave it blank to send it to the maintainers only.",
+      "type": "string"
+    },
+    "body": {
+      "title": "Full write-up",
+      "description": "What's the story? Markdown is supported. Suggested headings: Problem, Approach, Time and resources (data, staffing, cost), Results, Lessons learned, How to reuse.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "title",
+    "solution_type",
+    "area",
+    "stage",
+    "summary",
+    "organization",
+    "expertise",
+    "sharing",
+    "portability",
+    "no_pii_attestation",
+    "data_sensitivity",
+    "audience",
+    "contact_name",
+    "contact_email",
+    "body"
+  ],
+  "additionalProperties": false
+}

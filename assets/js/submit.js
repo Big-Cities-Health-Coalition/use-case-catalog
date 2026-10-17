@@ -1,7 +1,8 @@
 /**
  * Submit form — entry point. Wires the pieces in assets/js/submit/*.js:
  * fields (registry) → validate → repeatable → preview → draft → handoff →
- * review, and direct (Sign in with GitHub) when the site has it on.
+ * review, import (an AI agent's JSON), and direct (Sign in with GitHub) and uploads (file pickers for
+ * signed-in submitters) when the site has them on.
  *
  * Loaded last by the `scripts:` list in submit/index.md front matter, so every
  * window.SubmitForm helper it calls is already defined.
@@ -241,10 +242,15 @@
       draft.save();
     }
 
+    // File uploads (assets/js/submit/uploads.js), set up below beside the
+    // sign-in they depend on; a restored draft hands its record of them over.
+    let uploads = null;
+
     draft = ns.initDraft(
       form,
       fields,
-      function afterRestore(ui) {
+      function afterRestore(ui, uploaded) {
+        if (uploads) uploads.restore(uploaded);
         fields.filter((field) => field.type === 'images').forEach(ns.renderImagePreviews);
         // Visibility before position: the short-form recompute decides which
         // sections still have anything to show before the stepper lands on one.
@@ -349,6 +355,16 @@
       true
     );
 
+    /** @returns {string} the issue form with nothing prefilled */
+    function blankFormUrl() {
+      return (
+        'https://github.com/' +
+        form.dataset.repo +
+        '/issues/new?template=' +
+        (form.dataset.template || 'new-entry.yml')
+      );
+    }
+
     /**
      * Hand the answers to GitHub, from the review panel.
      *
@@ -379,10 +395,7 @@
         // not: the chooser has blank issues off, and submitters cannot label.
         showFallback(
           'Your answers are too long to carry across in a link. Open the issue form with the link below, then copy each answer from the box into the question with the same heading.',
-          'https://github.com/' +
-            form.dataset.repo +
-            '/issues/new?template=' +
-            (form.dataset.template || 'new-entry.yml')
+          blankFormUrl()
         );
         return;
       }
@@ -426,6 +439,28 @@
     // it can — the link hand-off is the way.
     const direct = titleField && typeof ns.initDirect === 'function' ? ns.initDirect(form) : null;
 
+    // Only with sign-in, and the service's address: submit/index.md renders
+    // data-uploads-url and uploads.js together, and only with signin_url set.
+    uploads =
+      direct && form.dataset.uploadsUrl && typeof ns.initUploads === 'function'
+        ? ns.initUploads({ form: form, fields: fields, direct: direct, draft: draft, onChange: refresh })
+        : null;
+
+    // "Using an AI agent?" (assets/js/submit/import.js): the pasted JSON fills
+    // the form, then the form's own validation reports on it.
+    if (typeof ns.initImport === 'function') {
+      ns.initImport({
+        root: root,
+        fields: fields,
+        summary: summary,
+        afterFill: function (problems) {
+          progress.errors(problems);
+          if (shortform) shortform.refresh();
+          refresh();
+        },
+      });
+    }
+
     /**
      * Send the answers straight to GitHub as the signed-in submitter. The
      * draft is deleted only once GitHub answers 201 — every other outcome
@@ -433,6 +468,12 @@
      * @param {HTMLButtonElement} button held while the request is out
      */
     function sendDirect(button) {
+      // Counted before the draft is cleared: the panel says where to drag the
+      // file for each file question that has no upload.
+      const uploaded = uploads ? uploads.count() : 0;
+      const fileLabels = fields
+        .filter((field) => field.type === 'file' && !(uploads && uploads.hasFiles(field)))
+        .map((field) => field.label);
       direct.submit({
         button: button,
         status: form.querySelector('[data-review-status]'),
@@ -442,14 +483,58 @@
           draft.clear();
           countEvent('Send to GitHub');
           say(status, '');
-          ns.renderSubmitted(
-            form,
-            issue,
-            fields.filter((field) => field.type === 'file').map((field) => field.label)
-          );
+          if (uploads) uploads.reset();
+          ns.renderSubmitted(form, issue, fileLabels, uploaded);
         },
-        onFallback: send,
+        onFallback: fallbackWithFiles,
       });
+    }
+
+    /**
+     * "Use GitHub's form instead" after a direct send failed. The prefilled
+     * link never carries `upload:` lines (handoff.js), so with files attached
+     * it would drop them unannounced: hand over the copy-out box instead,
+     * which carries them, and say why. Files held by an expired sign-in: say
+     * that only signing in again keeps them. No files, or no repository: the
+     * ordinary link hand-off.
+     */
+    function fallbackWithFiles() {
+      const files = uploads ? uploads.count() : 0;
+      const held = uploads ? uploads.held() : 0;
+      if (files === 0 && held > 0 && form.dataset.repo) {
+        // The sign-in expired (a 401 signs the page out): the files are still
+        // stored, but nothing sent from a signed-out page can name them.
+        ns.exitReview(form);
+        const url = ns.issueUrl(form, fields, entryTitle());
+        showFallback(
+          'Your GitHub sign-in has expired, so ' +
+            (held === 1 ? 'the file you uploaded is' : 'the ' + held + ' files you uploaded are') +
+            ' not in the box or the link below. To keep ' +
+            (held === 1 ? 'it' : 'them') +
+            ', sign in again and send from this page. To go on without ' +
+            (held === 1 ? 'it' : 'them') +
+            ', use GitHub’s form.',
+          url.length <= MAX_URL ? url : blankFormUrl()
+        );
+        return;
+      }
+      if (files === 0 || !form.dataset.repo) {
+        send();
+        return;
+      }
+      const url = ns.issueUrl(form, fields, entryTitle());
+      const fits = url.length <= MAX_URL;
+      ns.exitReview(form);
+      showFallback(
+        (files === 1 ? 'The file you uploaded does' : 'The ' + files + ' files you uploaded do') +
+          ' not travel in a link to GitHub’s form, but the box below carries ' +
+          (files === 1 ? 'it' : 'them') +
+          ' with your answers. ' +
+          (fits
+            ? 'Open the prefilled issue with the link below, then copy the upload: lines from the box into the questions with the same headings.'
+            : 'Open the issue form with the link below, then copy each answer from the box into the question with the same heading.'),
+        fits ? url : blankFormUrl()
+      );
     }
 
     form.addEventListener('submit', (event) => {

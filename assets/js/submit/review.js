@@ -160,7 +160,10 @@
    * @returns {HTMLElement[]} a <dt>/<dd> pair
    */
   function answerRow(field, change) {
-    const text = ns.serialize(field);
+    // Files attached on this page (assets/js/submit/uploads.js) read back by
+    // name and description, ahead of anything typed.
+    const files = typeof ns.uploadSummary === 'function' ? ns.uploadSummary(field) : [];
+    const text = files.concat(ns.serialize(field) || []).join('\n');
     const term = el('dt', { class: 'text-sm font-medium text-brand-ink sm:col-span-4' }, [
       document.createTextNode(field.question || field.label),
     ]);
@@ -504,10 +507,12 @@
    * @param {{number: number|null, url: string}} issue as GitHub returned it
    *   (no number when GitHub's answer lacked one: the link is then the
    *   submitter's own issues)
-   * @param {string[]} [fileLabels] labels of the form's `file` questions:
-   *   nothing can be attached from this page, so the panel says where to
+   * @param {string[]} [fileLabels] labels of the form's `file` questions that
+   *   have no uploaded file: nothing else can be attached from this page, so
+   *   the panel says where to. A question with an upload is left out.
+   * @param {number} [uploaded] how many files were sent from this page
    */
-  ns.renderSubmitted = function renderSubmitted(form, issue, fileLabels) {
+  ns.renderSubmitted = function renderSubmitted(form, issue, fileLabels, uploaded) {
     if (!panelHost(form)) return;
     const named = issue.number ? 'issue #' + issue.number : 'an issue';
     const heading = el('h2', {
@@ -536,6 +541,20 @@
           text: issue.number ? 'View #' + issue.number + ' on GitHub' : 'View your issues on GitHub',
         }),
       ]),
+      ...(uploaded > 0
+        ? [
+            el('div', { class: 'border-t border-brand-line px-6 py-4' }, [
+              el('p', {
+                class: 'text-sm text-brand-ink',
+                text:
+                  (uploaded === 1
+                    ? 'Your uploaded file went with it'
+                    : 'Your ' + uploaded + ' uploaded files went with it') +
+                  '. A reviewer checks every file before anything is published.',
+              }),
+            ]),
+          ]
+        : []),
       ...(fileLabels && fileLabels.length
         ? [
             el('div', { class: 'border-t border-brand-line px-6 py-4' }, [

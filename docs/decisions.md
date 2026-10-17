@@ -136,3 +136,42 @@ Letting a reader save "my constraints" (budget band, no PHI, on-prem only) and s
 catalog by fit was proposed and deferred rather than declined: compare + printable brief covers
 the immediate need, and the overlay is worth building only once real catalogs answer the cost
 questions consistently enough for the shading to mean something.
+
+## 2026-10-16 — Files attached on the submit page go through a stateless service
+
+A submitter can attach screenshots and a slide deck on `/submit/` instead of dragging them onto the
+issue afterwards. GitHub never prefills an upload control from a link, so the second step was where
+submissions lost their screenshots. The files go to a small service the deployment runs
+(`services/uploads/`), which checks each one and writes it straight to a **private GitHub repository**
+in the same request. It stores nothing itself: no database, no blob store, nothing on disk.
+
+- **Sign-in is required.** Signed in, an upload is attributable: the service asks GitHub who the token
+  belongs to, holds each person to their own caps (3 drafts, 9 files each) without CAPTCHAs or signed
+  sessions, and files the upload under that person's numeric id. The scaffolder then looks only under
+  the **issue author's** id, so a reference pasted into someone else's issue finds nothing. Direct
+  mode also creates the issue by API, so there is no popup to keep alive across an upload and the
+  deck question needs no prefilled text field. The cost is that a deployment must run the sign-in
+  service first, and submitters without a GitHub account keep the old flow.
+- **A second GitHub App, not more permissions on the sign-in App.** The sign-in App's user token sits in
+  every submitter's browser, on an origin the sign-in README already warns may be shared. Giving that App
+  *Contents* would widen what each of those tokens can do. The uploads App has Contents on the uploads
+  repository only, and its key lives only in the service and the catalog's Actions secrets. The scaffold
+  job gets a **read-only** token for one step; deleting uses a separate write token that only the cleanup
+  workflow mints.
+- **One parentless commit and one branch per file** (`u/<user-id>/<set>/<sha256>`). A file is four
+  writes with no ordering between parallel uploads, nothing to merge, and deleting the branch is the whole
+  cleanup, without touching anyone else's files. Blobs on pick and one commit on submit would save
+  writes but leave dangling blobs when a draft sits for days. The cost is GitHub's secondary rate limit,
+  about fourteen maximum-size submissions an hour per deployment, far above real volume.
+- **The scaffolder never deletes.** Every edit of the issue rebuilds the draft from `main` and resolves
+  the references again, so the files must outlive the first scaffold. Only `uploads-cleanup.yml` deletes,
+  when the draft pull request or the issue closes, and in a daily sweep of anything past 14 days that no open submission names.
+- **Decks are capped at 4 MB for now.** Vercel accepts at most 4.5 MB per request on every plan, and
+  chunked upload would make the service stateful. The picker suggests "export as PDF, minimum size", and
+  the deck question keeps its link answer for anything bigger. Revisit if real decks routinely exceed it.
+- **The private repository is not a privacy promise.** It protects abandoned uploads and stops the service
+  being an anonymous file host. Once scaffolded, files sit on a public draft branch before review, as
+  GitHub attachments always did. [SECURITY.md](../SECURITY.md) and the picker say so.
+
+The whole feature is off by default and per deployment: a blank `submit.uploads_url` means no pickers
+and no new behaviour. Design: [submit-uploads-plan.md](submit-uploads-plan.md).

@@ -470,3 +470,62 @@ test('coerceChoice strips wrapping quotes, and a long run of quotes stays fast',
   coerceChoice(field, `a${'"'.repeat(65000)}a`);
   assert.ok(Date.now() - started < 500, 'quote stripping is linear');
 });
+
+// `upload:` references: files attached on /submit/ through the optional upload
+// service (scripts/lib/upload_refs.mjs).
+const UPLOAD_SET = 'abcdefghijklmnopqrstuvwxyz';
+const shaOf = (char) => char.repeat(64);
+const uploadLine = (char, ext) => `upload:${UPLOAD_SET}/${shaOf(char)}.${ext}`;
+const uploadRef = (char, ext) => ({ set: UPLOAD_SET, sha256: shaOf(char), ext });
+
+test('parseImageRefs reads upload: lines with and without alt text, in order, among URLs', () => {
+  const raw = [
+    `${uploadLine('a', 'png')} | Landing page with a Get Started button`,
+    'https://example.org/shot2.jpg | The queue view',
+    `- ${uploadLine('b', 'webp')}`,
+    `${uploadLine('c', 'jpg')}|Results`,
+  ].join('\n');
+  assert.deepEqual(parseImageRefs(raw), [
+    { upload: uploadRef('a', 'png'), alt: 'Landing page with a Get Started button' },
+    { url: 'https://example.org/shot2.jpg', alt: 'The queue view' },
+    { upload: uploadRef('b', 'webp'), alt: '' },
+    { upload: uploadRef('c', 'jpg'), alt: 'Results' },
+  ]);
+});
+
+test('parseImageRefs collapses a repeated reference, keeping the first alt text', () => {
+  const raw = `${uploadLine('a', 'png')} | First\n${uploadLine('a', 'png')} | Second\n${uploadLine('a', 'png')}`;
+  assert.deepEqual(parseImageRefs(raw), [{ upload: uploadRef('a', 'png'), alt: 'First' }]);
+});
+
+test('parseImageRefs drops malformed upload: lines the way it drops malformed URLs', () => {
+  const malformed = [
+    'upload:',
+    `upload:${UPLOAD_SET}/${shaOf('a')}`, //                  no extension
+    `upload:${UPLOAD_SET}/${shaOf('a')}.gif`, //              not an allowed extension
+    `upload:${UPLOAD_SET}/${'a'.repeat(63)}.png | short`, //   truncated hash
+    `upload:${UPLOAD_SET.toUpperCase()}/${shaOf('a')}.png`, // set id is lower-case base32
+    `upload:${UPLOAD_SET}/${shaOf('A')}.png`, //              hash is lower-case hex
+    `upload:../${shaOf('a')}.png`,
+    `upload:${UPLOAD_SET}/${shaOf('a')}.png/../x.png`,
+    `see upload:${UPLOAD_SET}/${shaOf('a')}.png`,
+    'ftp://example.org/a.png',
+  ].join('\n');
+  assert.deepEqual(parseImageRefs(malformed), []);
+});
+
+test('parseAttachmentRef reads a bare upload: reference', () => {
+  assert.deepEqual(parseAttachmentRef(uploadLine('f', 'pdf')), { upload: uploadRef('f', 'pdf'), name: '' });
+  assert.deepEqual(parseAttachmentRef(`\n  ${uploadLine('f', 'pdf')}  \n`), {
+    upload: uploadRef('f', 'pdf'),
+    name: '',
+  });
+  // A malformed reference is no attachment at all, like text with no link.
+  assert.equal(parseAttachmentRef(`upload:${UPLOAD_SET}/${shaOf('f')}.exe`), null);
+  assert.equal(parseAttachmentRef('upload:nothing'), null);
+  // A URL answer is unchanged.
+  assert.deepEqual(parseAttachmentRef('https://example.org/deck.pdf'), {
+    url: 'https://example.org/deck.pdf',
+    name: '',
+  });
+});

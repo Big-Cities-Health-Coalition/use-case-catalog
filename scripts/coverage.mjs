@@ -26,6 +26,17 @@ export const COVERAGE_GROUPS = [
     tests: ['services/github-signin/test/signin.test.mjs'],
   },
   {
+    id: 'uploads-service',
+    label: 'The optional upload service, which handles user tokens, the uploads App key and file writes',
+    thresholds: { lines: 95, branches: 90, functions: 95 },
+    includes: ['services/uploads/api/**/*.mjs', 'services/uploads/lib/**/*.mjs'],
+    tests: [
+      'services/uploads/test/config.test.mjs',
+      'services/uploads/test/github.test.mjs',
+      'services/uploads/test/upload.test.mjs',
+    ],
+  },
+  {
     id: 'security-parsers',
     label: 'Security-sensitive issue, YAML, image, attachment, and advisory parsers',
     thresholds: { lines: 88, branches: 78, functions: 90 },

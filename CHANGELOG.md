@@ -8,6 +8,67 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.12] — 2026-10-16
+
+Twelfth candidate. rc.11 failed closed in a deployment's update (nothing was
+published) on a test that read the deployment's own `site.yml`; rc.12 fixes that
+test and otherwise carries rc.11 unchanged.
+
+### Fixed
+
+- A test added in rc.11 failed inside a real deployment's PHCT update, which
+  runs the template's suite on the deployment's own files.
+  `submit_uploads.test.mjs` required `_data/site.yml` to carry a blank
+  `submit.uploads_url`, which a deployment's own `site.yml` need not have. That
+  file belongs to the deployment, so the check is gone; off-by-default is still
+  checked on the submit page's own snapshot and at runtime. The submit page and
+  the upload code were not at fault.
+
+## [1.11.0-rc.11] — 2026-10-16
+
+Eleventh candidate. It adds optional file uploads on the submit page (off by
+default; they need `submit.signin_url` and a deployed uploads service) and the
+"Using an AI agent?" path (#114).
+
+### Added
+
+- Optional **attach files on the submit page**. Set `submit.uploads_url` in
+  `_data/site.yml` (it needs `submit.signin_url`; `npm run validate` checks
+  both) and a signed-in submitter gets a file picker on the screenshots question,
+  with alt text beside each picture, and on each file question (the slide deck).
+  Each file uploads as soon as it is picked, pictures are re-encoded in the browser
+  first (EXIF and location data stripped, longest side 2,400 px), the draft remembers
+  the files, and the issue carries `upload:` references instead of asking the
+  submitter to drag files onto GitHub afterwards. Off by default; blank keeps the page
+  exactly as it was. Files are limited to 4 MB each, 3 drafts and 9 files per draft per
+  person.
+- `services/uploads/`, the **upload service** behind it: a stateless Vercel project with
+  no runtime dependencies. It checks the submitter's GitHub token, the origin, the
+  file's real type and size and the per-person caps, then writes each file as its own
+  parentless commit and branch in a private uploads repository, with a second GitHub App
+  of its own. Setup is in `services/uploads/README.md`.
+- The scaffolder resolves `upload:` references. `new-entry.yml` mints a read-only token for
+  the uploads repository (repository variable `UPLOADS_REPO`, secrets `UPLOADS_APP_ID` and
+  `UPLOADS_APP_PRIVATE_KEY`) and hands it to the scaffold step only; the files are read as
+  the issue's author, re-hashed, checked like any attachment and committed into the entry.
+  An unset or broken setup, or a file that has expired, becomes a warning on the draft,
+  and dragging files onto the issue keeps working.
+- **Uploads cleanup** workflow (`uploads-cleanup.yml`): deletes a submission's files when
+  its draft pull request is merged or closed (or its issue is closed by hand), and
+  daily sweeps any file older than 14 days that no open submission names. A manual run with
+  **Preview only** lists what would go. Admin guide: *Files attached on the submit page*,
+  including how to purge something sensitive.
+- "Using an AI agent?" on `/submit/`: an instructions file and a JSON Schema for answers,
+  both generated from `_data/schema.yml` by `npm run generate`, and an **Import answers**
+  box that loads an agent's JSON into the form and runs the form's own checks.
+
+### Security
+
+- `SECURITY.md` and the sign-in README now say that, on a deployment that also runs the
+  upload service, the submitter's sign-in token is sent to that service as well as to
+  `api.github.com` (one `GET /user` call), and that the private uploads repository does
+  not keep screenshots private once a submission is scaffolded.
+
 ## [1.11.0-rc.10] — 2026-10-13
 
 Tenth candidate. rc.9 failed closed in BCHC on three new tests that read the
@@ -1735,7 +1796,9 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.10...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.12...HEAD
+[1.11.0-rc.12]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.11...v1.11.0-rc.12
+[1.11.0-rc.11]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.10...v1.11.0-rc.11
 [1.11.0-rc.10]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.9...v1.11.0-rc.10
 [1.11.0-rc.9]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.8...v1.11.0-rc.9
 [1.11.0-rc.8]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.7...v1.11.0-rc.8
