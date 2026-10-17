@@ -39,6 +39,8 @@ ownership:
     - .github/ISSUE_TEMPLATE/new-entry.yml
     - .github/ISSUE_TEMPLATE/config.yml
     - assets/js/configurator/defaults.generated.js
+    - submit/answers.schema.json
+    - submit/agent-instructions.txt
 
   # Protected from the parent merge, then deliberately updated by the updater.
   # It is excluded from byte-for-byte deployment content checks.
