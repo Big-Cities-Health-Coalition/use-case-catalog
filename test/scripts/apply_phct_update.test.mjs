@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 import {
   applyUpdate,
   assertStableOwnershipContract,
+  generatedOutputAdditions,
   parseNameStatusZ,
   planReconciliation,
   planUpdate,
+  resolveOwnershipContract,
 } from '../../scripts/apply_phct_update.mjs';
 import { forkOwnershipRules } from '../../scripts/upgrade_check.mjs';
 
@@ -111,6 +113,124 @@ test('an ownership migration stops before changing the downstream tree', () => {
   assert.equal(fs.readFileSync(path.join(root, 'app.txt'), 'utf8'), 'downstream drift\n');
   assert.equal(fs.readFileSync(path.join(root, '.gitattributes'), 'utf8'), 'config/** merge=ours\n');
   assert.equal(git(root, 'status', '--short'), '');
+});
+
+test('a release that only adds absent generator outputs is adopted, not refused', () => {
+  const current = 'config/** merge=ours\nconfig/template/** !merge\ngen/a.json merge=ours\n';
+  const target = `${current}gen/b.json merge=ours\ngen/c.txt merge=ours\n`;
+  const context = {
+    generated: ['gen/a.json', 'gen/b.json', 'gen/c.txt'],
+    currentFiles: ['gen/a.json', 'app.js'],
+  };
+  const { rules, adopted } = resolveOwnershipContract(current, target, context);
+  assert.deepEqual(adopted, ['gen/b.json', 'gen/c.txt']);
+  assert.deepEqual(rules, forkOwnershipRules(target));
+
+  // Inserted between existing rules is still a pure addition.
+  const between =
+    'config/** merge=ours\ngen/b.json merge=ours\nconfig/template/** !merge\ngen/a.json merge=ours\n';
+  assert.deepEqual(resolveOwnershipContract(current, between, context).adopted, ['gen/b.json']);
+
+  // An unchanged contract adopts nothing.
+  assert.deepEqual(resolveOwnershipContract(current, `# target\n${current}`, context).adopted, []);
+});
+
+test('every other ownership change still fails closed', () => {
+  const current = 'config/** merge=ours\nconfig/template/** !merge\n';
+  const context = { generated: ['gen/b.json', 'config/template/out.json'], currentFiles: ['app.js'] };
+  const refused = (target, ctx = context) =>
+    assert.throws(
+      () => resolveOwnershipContract(current, target, ctx),
+      /changes the deployment ownership contract/
+    );
+
+  refused(`${current}gen/b.json merge=ours\n`, { ...context, currentFiles: ['gen/b.json'] }); // the deployment has the file
+  refused(`${current}gen/b.json merge=ours\n`, { ...context, exists: (file) => file === 'gen/b.json' }); // untracked on disk
+  refused(`${current}gen/b.json merge=ours\n`, { ...context, generated: [] }); // not a generator output
+  refused(`${current}gen/b.json merge=ours\n`, {}); // no context: strict
+  refused(`${current}gen/** merge=ours\n`, { ...context, generated: ['gen/**'] }); // a glob
+  refused(`${current}gen/b?.json merge=ours\n`, { ...context, generated: ['gen/b?.json'] });
+  refused(`${current}gen/b.json merge=ours\ngen/b.json !merge\n`); // a later rule unprotects it
+  refused(`${current}gen/b.json merge=ours\nconfig/reclaimed/** !merge\n`); // a reclaim rides along
+  refused('config/template/** !merge\nconfig/** merge=ours\ngen/b.json merge=ours\n'); // reordered
+  refused('config/** merge=ours\ngen/b.json merge=ours\n'); // an existing rule removed
+  // Added before an existing exception glob that unprotects it: still template-owned.
+  refused('config/** merge=ours\nconfig/template/out.json merge=ours\nconfig/template/** !merge\n');
+  assert.equal(
+    generatedOutputAdditions(forkOwnershipRules(current), forkOwnershipRules(current), context),
+    null
+  );
+});
+
+test('the updater adopts a new generated output end to end and leaves it for generate', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'phct-generated-addition-'));
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'PHCT test');
+  git(root, 'config', 'user.email', 'test@example.invalid');
+  fs.mkdirSync(path.join(root, '.phct'));
+  fs.mkdirSync(path.join(root, 'config'));
+  fs.writeFileSync(path.join(root, '.gitattributes'), 'config/** merge=ours\n');
+  fs.writeFileSync(path.join(root, '.phct/ownership.yml'), 'ownership:\n  generated: []\n');
+  fs.writeFileSync(path.join(root, 'config/site.yml'), 'name: parent\n');
+  fs.writeFileSync(path.join(root, 'app.txt'), 'parent v1\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'parent v1');
+  git(root, 'tag', 'v1.0.0');
+
+  const targetAttributes = 'config/** merge=ours\nout/answers.json merge=ours\n';
+  fs.writeFileSync(path.join(root, '.gitattributes'), targetAttributes);
+  fs.writeFileSync(
+    path.join(root, '.phct/ownership.yml'),
+    'ownership:\n  generated:\n    - out/answers.json\n'
+  );
+  fs.mkdirSync(path.join(root, 'out'));
+  fs.writeFileSync(path.join(root, 'out/answers.json'), '{"from":"the template demo"}\n');
+  fs.writeFileSync(path.join(root, 'app.txt'), 'parent v2\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'parent v2');
+  git(root, 'tag', 'v1.1.0');
+
+  git(root, 'checkout', '--quiet', '-b', 'downstream', 'v1.0.0');
+  fs.writeFileSync(path.join(root, 'config/site.yml'), 'name: downstream\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'customize downstream');
+
+  const result = applyUpdate({ root, from: 'v1.0.0', to: 'v1.1.0' });
+  assert.deepEqual(result.adopted, ['out/answers.json']);
+  assert.equal(fs.readFileSync(path.join(root, '.gitattributes'), 'utf8'), targetAttributes);
+  assert.equal(fs.readFileSync(path.join(root, 'app.txt'), 'utf8'), 'parent v2\n');
+  assert.equal(fs.readFileSync(path.join(root, 'config/site.yml'), 'utf8'), 'name: downstream\n');
+  assert.equal(fs.existsSync(path.join(root, 'out/answers.json')), false, 'left for npm run generate');
+  assert.ok(result.preserve.includes('out/answers.json'));
+});
+
+test('an untracked file at a new generated path stops the update before it writes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'phct-generated-untracked-'));
+  git(root, 'init', '--quiet', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'PHCT test');
+  git(root, 'config', 'user.email', 'test@example.invalid');
+  fs.mkdirSync(path.join(root, '.phct'));
+  fs.writeFileSync(path.join(root, '.gitattributes'), 'config/** merge=ours\n');
+  fs.writeFileSync(path.join(root, '.phct/ownership.yml'), 'ownership:\n  generated: []\n');
+  fs.writeFileSync(path.join(root, 'app.txt'), 'parent v1\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'parent v1');
+  git(root, 'tag', 'v1.0.0');
+  fs.writeFileSync(path.join(root, '.gitattributes'), 'config/** merge=ours\nout.json merge=ours\n');
+  fs.writeFileSync(path.join(root, '.phct/ownership.yml'), 'ownership:\n  generated:\n    - out.json\n');
+  fs.writeFileSync(path.join(root, 'app.txt'), 'parent v2\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '--quiet', '-m', 'parent v2');
+  git(root, 'tag', 'v1.1.0');
+  git(root, 'checkout', '--quiet', '-b', 'downstream', 'v1.0.0');
+  fs.writeFileSync(path.join(root, 'out.json'), 'hand-made, never committed\n');
+
+  assert.throws(
+    () => applyUpdate({ root, from: 'v1.0.0', to: 'v1.1.0' }),
+    /changes the deployment ownership contract/
+  );
+  assert.equal(fs.readFileSync(path.join(root, 'app.txt'), 'utf8'), 'parent v1\n');
+  assert.equal(fs.readFileSync(path.join(root, 'out.json'), 'utf8'), 'hand-made, never committed\n');
 });
 
 test('the CLI runs when invoked through a symlinked path', () => {

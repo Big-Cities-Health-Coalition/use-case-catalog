@@ -7,6 +7,8 @@ import process from 'node:process';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import * as yaml from 'js-yaml';
+
 import { forkOwnershipRules, isForkOwned, isImmutableUpdateRef } from './upgrade_check.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,26 +109,117 @@ export function planReconciliation(targetFiles, currentFiles, rules) {
   return { take, remove, preserve };
 }
 
+const CONTRACT_CHANGED =
+  'Target release changes the deployment ownership contract. Apply and review the ' +
+  '.gitattributes and .phct/ownership.yml migration separately before rerunning this update.';
+
+const sameRule = (a, b) => a.pattern === b.pattern && a.owned === b.owned;
+
+/**
+ * The target's ownership rules, when they are the current rules plus only new
+ * generator outputs the deployment does not have yet. Such a path cannot hold
+ * deployment content, so protecting it overwrites nothing and reclaims
+ * nothing: the update leaves it alone and `npm run generate` writes it from
+ * the deployment's own data. Each added rule must be a literal `merge=ours`
+ * path, listed in the target's `ownership.generated`, absent from the
+ * deployment (tracked or not), and still protected after every target rule; the existing rules
+ * must survive in order. Anything else returns null.
+ *
+ * @param {{pattern: string, owned: boolean}[]} currentRules
+ * @param {{pattern: string, owned: boolean}[]} targetRules
+ * @param {{generated?: string[], currentFiles?: string[], exists?: (file: string) => boolean}} context
+ *   `exists` reports a path on disk, so an untracked file there counts as present
+ * @returns {string[]|null} the adopted paths, or null when the change is not of that kind
+ */
+export function generatedOutputAdditions(
+  currentRules,
+  targetRules,
+  { generated = [], currentFiles = [], exists = () => false } = {}
+) {
+  const added = [];
+  let next = 0;
+  for (const rule of targetRules) {
+    if (next < currentRules.length && sameRule(rule, currentRules[next])) next += 1;
+    else added.push(rule);
+  }
+  if (next !== currentRules.length || added.length === 0) return null;
+
+  const present = new Set(currentFiles);
+  const adoptable = (rule) =>
+    rule.owned &&
+    !/[*?[\]\\]/.test(rule.pattern) &&
+    !rule.pattern.endsWith('/') &&
+    generated.includes(rule.pattern) &&
+    !present.has(rule.pattern) &&
+    !exists(rule.pattern) &&
+    isForkOwned(targetRules, rule.pattern);
+  return added.every(adoptable) ? added.map((rule) => rule.pattern) : null;
+}
+
 /**
  * Refuse to guess when a release moves paths across the ownership boundary.
  * Ownership migrations need a separate, human-reviewed downstream change so
  * newly protected files cannot be overwritten and reclaimed files cannot keep
- * stale deployment content.
+ * stale deployment content. The one exception is a release that only adds
+ * generator outputs the deployment does not have (generatedOutputAdditions):
+ * the update adopts those rules itself.
+ *
+ * @param {string} currentAttributes
+ * @param {string} targetAttributes
+ * @param {{generated?: string[], currentFiles?: string[]}} [context] the target's
+ *   `ownership.generated` and the deployment's tracked files; without them only an
+ *   unchanged contract passes
+ * @returns {{rules: {pattern: string, owned: boolean}[], adopted: string[]}}
+ */
+export function resolveOwnershipContract(currentAttributes, targetAttributes, context = {}) {
+  const currentRules = forkOwnershipRules(currentAttributes);
+  const targetRules = forkOwnershipRules(targetAttributes);
+  if (JSON.stringify(currentRules) === JSON.stringify(targetRules)) {
+    return { rules: currentRules, adopted: [] };
+  }
+  const adopted = generatedOutputAdditions(currentRules, targetRules, context);
+  if (!adopted) throw new Error(CONTRACT_CHANGED);
+  return { rules: targetRules, adopted };
+}
+
+/**
+ * The strict form: the target must keep the current contract exactly.
  *
  * @param {string} currentAttributes
  * @param {string} targetAttributes
  * @returns {{pattern: string, owned: boolean}[]}
  */
 export function assertStableOwnershipContract(currentAttributes, targetAttributes) {
-  const currentRules = forkOwnershipRules(currentAttributes);
-  const targetRules = forkOwnershipRules(targetAttributes);
-  if (JSON.stringify(currentRules) !== JSON.stringify(targetRules)) {
-    throw new Error(
-      'Target release changes the deployment ownership contract. Apply and review the ' +
-        '.gitattributes and .phct/ownership.yml migration separately before rerunning this update.'
-    );
+  return resolveOwnershipContract(currentAttributes, targetAttributes).rules;
+}
+
+/**
+ * `ownership.generated` from the target release's manifest; empty when the
+ * release has none, which leaves only the strict contract check.
+ *
+ * @param {string} root
+ * @param {string} to
+ * @returns {string[]}
+ */
+function targetGeneratedPaths(root, to) {
+  let text;
+  try {
+    text = git(root, ['show', `${to}:.phct/ownership.yml`]);
+  } catch {
+    return [];
   }
-  return currentRules;
+  const generated = yaml.load(text)?.ownership?.generated;
+  return Array.isArray(generated) ? generated.filter((item) => typeof item === 'string') : [];
+}
+
+/** Anything at the path, including a dangling symlink. */
+function pathExists(file) {
+  try {
+    fs.lstatSync(file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function nulList(output) {
@@ -162,12 +255,16 @@ export function applyUpdate({ root = ROOT, from, to }) {
 
   const currentAttributes = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8');
   const targetAttributes = git(root, ['show', `${to}:.gitattributes`]);
-  const rules = assertStableOwnershipContract(currentAttributes, targetAttributes);
+  const targetFiles = nulList(git(root, ['ls-tree', '-r', '-z', '--name-only', to, '--']));
+  const currentFiles = nulList(git(root, ['ls-files', '-z']));
+  const { rules, adopted } = resolveOwnershipContract(currentAttributes, targetAttributes, {
+    generated: targetGeneratedPaths(root, to),
+    currentFiles,
+    exists: (file) => pathExists(path.join(root, file)),
+  });
   const changes = parseNameStatusZ(
     git(root, ['diff', '--name-status', '-z', '--find-renames', from, to, '--'])
   );
-  const targetFiles = nulList(git(root, ['ls-tree', '-r', '-z', '--name-only', to, '--']));
-  const currentFiles = nulList(git(root, ['ls-files', '-z']));
   const plan = planReconciliation(targetFiles, currentFiles, rules);
 
   for (const batch of batches(plan.remove)) {
@@ -180,7 +277,7 @@ export function applyUpdate({ root = ROOT, from, to }) {
   const unmerged = git(root, ['diff', '--name-only', '--diff-filter=U', '--']).trim();
   if (unmerged) throw new Error(`Update left unresolved paths:\n${unmerged}`);
 
-  return { changes, ...plan };
+  return { changes, adopted, ...plan };
 }
 
 function parseArgs(argv) {
@@ -205,6 +302,11 @@ function main(argv) {
     console.log(
       `Reconciled ${result.take.length + result.remove.length} template-owned paths to ${to} from ${result.changes.length} parent changes; preserved ${result.preserve.length} deployment-owned paths.`
     );
+    if (result.adopted.length > 0) {
+      console.log(
+        `Adopted the release's new generated outputs as deployment-owned; npm run generate writes them: ${result.adopted.join(', ')}.`
+      );
+    }
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
