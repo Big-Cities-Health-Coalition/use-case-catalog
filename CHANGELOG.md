@@ -8,6 +8,26 @@ major version, and each entry says so when it happens.
 
 ## [Unreleased]
 
+## [1.11.0-rc.14] — 2026-10-17
+
+Fourteenth candidate. It carries rc.13 plus the updater fix below, so the
+next release that adds a generated file applies without hand-made pull
+requests. It changes no `.github/workflows` file relative to rc.13 and adds no
+generated outputs.
+
+### Fixed
+
+- A release that added a generated file (as rc.11 did with
+  `submit/answers.schema.json` and `submit/agent-instructions.txt`) could not be
+  applied to a deployment without two hand-made pull requests. The updater
+  refused the new ownership rules until the deployment had migrated, and the
+  deployment's ownership check refused the migration until it had the new
+  generator. The updater now adopts rules that only protect new generated
+  files the deployment does not have, and `npm run generate` writes them. Every
+  other ownership change still fails closed. This takes effect from the update
+  after the one that ships it, because a deployment runs the updater it
+  already has.
+
 ## [1.11.0-rc.13] — 2026-10-17
 
 Thirteenth candidate. It carries rc.12 plus one fix to the upload service, so a
@@ -1810,7 +1830,8 @@ fixed in this release, and the remaining P3s are listed in `docs/roadmap.md`.
   in-browser and CLI configurators, GitHub-issue submission flow, events /
   cohorts / resources modules, Lunr search, thumbnails workflow.
 
-[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.13...HEAD
+[Unreleased]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.14...HEAD
+[1.11.0-rc.14]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.13...v1.11.0-rc.14
 [1.11.0-rc.13]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.12...v1.11.0-rc.13
 [1.11.0-rc.12]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.11...v1.11.0-rc.12
 [1.11.0-rc.11]: https://github.com/crypticpy/phct/compare/v1.11.0-rc.10...v1.11.0-rc.11
