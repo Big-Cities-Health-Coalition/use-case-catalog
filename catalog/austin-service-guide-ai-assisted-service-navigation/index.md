@@ -15,7 +15,7 @@ use_case_category: Administrative & task automation
 area:
   - Access to and linkage with care
   - Communications and community engagement
-stage: Pilot
+stage: "Idea / exploring"
 summary: Residents describe their situation in a short chat and get a ranked plan of local services they may qualify for, with hours, documents to bring, and a map.
 impact: ""
 review_status: Under review
@@ -114,7 +114,19 @@ Limits, stated plainly: pattern matching does not catch names, addresses without
 Built by Austin Public Health IT staff using an AI pair programmer. The first working version took two days (April 2026). Voice intake was added in May 2026 (see the companion voice entry). A bug-fix and privacy pass came in October 2026. Software cost was zero beyond existing staff time. Running it with live AI costs only OpenAI API usage, and without an API key it runs a scripted intake for free.
 
 ## Results
-The demo was shown to the Austin Public Health Commission to make the case for AI-assisted service navigation concrete. It is a pilot demonstration and has not been used with real residents. Its value so far is showing that a working resident-facing prototype, admin console included, can be built in days rather than months, and giving leaders something real to react to.
+**Status: agency-validated functional prototype (pilot-ready).** Austin Public Health built the complete system and tested it internally: intake, rules-based matching, plans, directory, map and staff console. It was presented to the Austin Public Health Commission. The next step is a supervised pilot with residents, which has not started yet. Before that pilot, the deployment items listed under *How to reuse this* have to be in place.
+
+The build showed that a working resident-facing service navigator, admin console included, can be built in days with AI-assisted development instead of the months a traditional agency project would take.
+
+## Multi-city white-label readiness
+The city-specific parts are kept apart from the code so another city can bring its own:
+
+- **Services:** one YAML file per service in `backend/app/data/services/`, holding eligibility conditions, documents, hours and locations. Replacing these files is the main job.
+- **Branding:** colours and type in `frontend/src/theme/brandTheme.ts`.
+- **AI provider:** every model call goes through one module (`backend/app/services/ai.py`), so Azure OpenAI or another model with tool calling replaces one file.
+- **Settings:** API keys and modes are environment variables (see `backend/.env.example`). Without a key the app runs a scripted intake, so a city can try it before signing any vendor agreement.
+
+Container images and cloud deployment templates are not in the repository yet. BCHC's plan for them is in the catalog's [Launchpad architecture roadmap](https://github.com/Big-Cities-Health-Coalition/use-case-catalog/blob/main/docs/bchc/LAUNCHPAD_ARCHITECTURE.md).
 
 ## Lessons learned
 - **Don't let the model decide eligibility.** Early versions led a housed renter's plan with homeless shelters. We moved eligibility into explicit rules that a reviewer can read and test, and kept the model for conversation.
@@ -123,4 +135,4 @@ The demo was shown to the Austin Public Health Commission to make the case for A
 - **A scripted fallback makes demos reliable.** Without an API key, the app runs a scripted intake, so a live presentation doesn't depend on a network or a vendor.
 
 ## How to reuse this
-Fork the repository and replace the YAML files in `backend/app/data/services/` with your jurisdiction's services. Each file holds one service: eligibility conditions, documents, hours and locations. Branding comes from one `brand.config.json`. Run it without a key to demo the scripted flow, and add an OpenAI (or Azure OpenAI) key for the live assistant. Before using it with real residents, work through the "What a real deployment still needs" list in `docs/PRIVACY.md`: staff authentication, vendor agreements, zero data retention, and a retention policy.
+Fork the repository and replace the YAML files in `backend/app/data/services/` with your jurisdiction's services. Each file holds one service: eligibility conditions, documents, hours and locations. Branding comes from `frontend/src/theme/brandTheme.ts`. Run it without a key to demo the scripted flow, and add an OpenAI (or Azure OpenAI) key for the live assistant. Before using it with real residents, work through the "What a real deployment still needs" list in `docs/PRIVACY.md`: staff authentication, vendor agreements, zero data retention, and a retention policy.

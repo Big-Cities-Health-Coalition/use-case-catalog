@@ -14,13 +14,17 @@ Fill in the [**Submit** form](https://big-cities-health-coalition.github.io/use-
 
 [`docs/admin-guide.md`](docs/admin-guide.md) is the maintainer's manual: reviewing submissions, the content model, editing entries, and configuring the site. [`docs/launch.md`](docs/launch.md) covers first-time setup, and [`docs/configuration.md`](docs/configuration.md) the `_data/*.yml` files that drive everything.
 
-> The catalog currently carries the demo entries the site shipped with — every page says so until they are cleared (`npm run eject:samples`, or the *Apply setup* issue form).
+The template's demo content has been cleared. Every entry in `catalog/` was submitted by a BCHC member health department and goes through the review process published at `/governance/` before it is marked *Reviewed & approved*; an entry still in review says so on its page.
 
 Built on the [Pub Health Catalog Template (PHCT)](https://github.com/crypticpy/phct); see [`docs/upgrading.md`](docs/upgrading.md) for pulling in template improvements.
 
 ### Ownership
 
-The Big Cities Health Coalition owns this repository and the published site, through its GitHub organization [Big-Cities-Health-Coalition](https://github.com/Big-Cities-Health-Coalition). It moved there from `@crypticpy`'s account in September 2026. `@crypticpy` continues as the interim technical maintainer until BCHC names its own. [`docs/bchc/transfer-runbook.md`](docs/bchc/transfer-runbook.md) records how the move was done, and [`MAINTAINERS.md`](MAINTAINERS.md) lists who holds which role.
+The Big Cities Health Coalition owns this repository and the published site, through its GitHub organization [Big-Cities-Health-Coalition](https://github.com/Big-Cities-Health-Coalition), with the coalition's Data Modernization Workgroup as the steward of its content and governance. BCHC's product owner approves content and policy; a technical maintainer contracted by BCHC (currently `@crypticpy`) runs code review, CI, security triage and releases under access that BCHC grants and reviews. The repository moved into the BCHC organization in September 2026. [`docs/bchc/transfer-runbook.md`](docs/bchc/transfer-runbook.md) records how the move was done, and [`MAINTAINERS.md`](MAINTAINERS.md) lists who holds which role.
+
+## Where this is going
+
+[`docs/bchc/LAUNCHPAD_ARCHITECTURE.md`](docs/bchc/LAUNCHPAD_ARCHITECTURE.md) is the technical roadmap from this static catalog to a managed, single-tenant deployment service for member cities, with each part marked as built, in progress or planned.
 
 ## What's next
 
@@ -156,7 +160,6 @@ scripts/                 setup.mjs, generate.mjs, validate.mjs, build_showcase.m
                          verification-sweep, metrics
 .github/ISSUE_TEMPLATE/  new-entry.yml is generated — do not hand-edit it, run `npm run generate`
 catalog/<slug>/index.md  published entries; screenshots live in catalog/<slug>/screenshots/
-                         (ten sample entries ship with the template, marked `sample: true`)
 cohorts/<year>/          cohort landing page + event pages (module: cohorts)
 governance/              /governance/ — review process, roles and policies from _data/governance.yml (module: governance)
 styleguide/              /styleguide/ — live rendering of the design system against your theme (noindex)

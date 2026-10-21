@@ -89,13 +89,13 @@ submitter_github: coa-chrisc
 Life expectancy in Travis County differs by more than 11 years between ZIP codes a few miles apart. That gap is well documented in public datasets, but those datasets are hard for residents, commissioners and community partners to explore. We wanted a tool anyone could open at a community event or on their phone to see their own neighborhood in context.
 
 ## Approach
-A static web app with three modes:
+A neighborhood health and equity explorer built only on aggregate public data: life expectancy, poverty, insurance, chronic disease and crime rates for Travis County's 63 ZIP codes. It holds no individual health records. A static web app with three modes:
 
 - **Check your neighborhood:** enter a ZIP code to see life expectancy against the county average, where it ranks among all ZIPs, and gauges for poverty, uninsured rate, diabetes, hypertension and obesity.
 - **Explore the map:** a choropleth of every Travis County ZIP code, switchable across eight indicators.
 - **Compare ZIP codes:** two or three ZIPs side by side in a radar chart and a table.
 
-A personal lifespan estimator applies effect sizes from large published cohort studies (smoking, activity, diet, BMI, sleep, stress) to the U.S. life table. It shows which factors have the most years to gain and can hand off to the companion [Austin Service Guide](/catalog/austin-service-guide-ai-assisted-service-navigation/) with only those factor categories, so the resident's answers never leave the page. A kiosk mode rotates key facts on screen at events.
+A "what-if" estimator shows how much common factors (smoking, activity, diet, BMI, sleep, stress) shift life expectancy on average. It applies effect sizes from large published cohort studies to the U.S. life table. The results are population averages, not a clinical prediction for the person using it, and the tool says so on screen. Answers stay in the browser. It shows which factors have the most years to gain and can hand off to the companion [Austin Service Guide](/catalog/austin-service-guide-ai-assisted-service-navigation/) with only those factor categories, so the resident's answers never leave the page. A kiosk mode rotates key facts on screen at events.
 
 A Python pipeline pulls the public sources, rolls tract data up to ZIP codes with population weights, suppresses unreliable small-population estimates, and writes static JSON. The site needs no server.
 
@@ -103,7 +103,14 @@ A Python pipeline pulls the public sources, rolls tract data up to ZIP codes wit
 Built by Austin Public Health IT staff in about 12 hours (three four-hour sessions), using Claude as an AI pair programmer. That covers the pipeline, all three modes, the calculators, kiosk mode and the deployment workflow. Loaded staff cost was about $1.5K, against a typical agency estimate of 250–400 hours ($50K–$100K). Hosting on GitHub Pages is free and all data is public.
 
 ## Results
-A working public-facing prototype that shows the county's life expectancy gap at a glance, demonstrated to the Austin Public Health Commission. It shows how AI-assisted development can turn a public dataset into something residents can use in days rather than months, and lets the department test the idea with the community before committing to a production build.
+**Status: agency-validated functional prototype (pilot-ready).** Austin Public Health built and tested the tool internally, published it as a public prototype, and demonstrated it to the Austin Public Health Commission. It shows the county's life expectancy gap at a glance. It took about 12 staff hours with AI-assisted development, against a typical agency estimate of 6–8 weeks, and it lets the department test the idea with the community before committing to a production build.
+
+## Multi-city white-label readiness
+The app is a static site with no server, database or API keys, so any static web host can run it. The local parts are:
+
+- **Geography:** the ZIP code list in `app/src/lib/constants.ts` and the county filter in the Python pipeline.
+- **Data:** USALEEP, ACS and CDC PLACES cover every U.S. county, so `scripts/export_frontend_json.py` and `scripts/prepare_geojson.py` regenerate the data for a new place. Only the violent-crime indicator uses an Austin source, and it can be swapped or dropped.
+- **Deployment:** the included GitHub Actions workflow lints, tests, builds and publishes to GitHub Pages on every push.
 
 ## Lessons learned
 - **Check the data, not just the code.** A review pass found a campus ZIP code with too few residents for stable rates, and a few missing values that displayed as zero. We added population-based suppression and an "N/A" state.

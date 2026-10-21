@@ -1,7 +1,9 @@
 # Catalog maintainers
 
-This catalog is a BCHC-owned deployment of the PHCT open-source template. BCHC
-owns the catalog's content, policy, branding, publication decisions, and operational access; shared
+This catalog is owned and operated by the Big Cities Health Coalition (BCHC), with the coalition's
+Data Modernization Workgroup as the steward of its content and governance. It is a deployment of
+the PHCT open-source template. BCHC owns the catalog's content, policy, branding, publication
+decisions, and operational access; shared
 software fixes are developed and released in PHCT before this repository consumes them. Neither
 project promises paid support, 24-hour response, or uninterrupted service.
 
@@ -20,10 +22,11 @@ table only after they accept the role and complete the drills in `docs/maintaini
 
 ## Ownership and the interim arrangement
 
-The repository is moving from `@crypticpy`'s personal account to BCHC's GitHub organization; the
-steps are in `docs/bchc/transfer-runbook.md`. After the move BCHC owns the repository, and
-`@crypticpy` holds repository Admin as a contracted interim maintainer, because secrets, Pages,
-rulesets, environments, and Actions settings all need Admin. That access is BCHC's to grant, review,
+The repository moved from `@crypticpy`'s personal account to BCHC's GitHub organization in
+September 2026; the steps are recorded in `docs/bchc/transfer-runbook.md`. BCHC owns the
+repository. `@crypticpy` holds repository Admin as the technical maintainer contracted by BCHC,
+because secrets, Pages, rulesets, environments, and Actions settings all need Admin, and runs the
+automated review and release workflows on BCHC's behalf. That access is BCHC's to grant, review,
 and remove. When BCHC names its own technical maintainer, that person takes the role above and
 `@crypticpy` steps down under the rules below, or stays on in whatever capacity BCHC agrees.
 
