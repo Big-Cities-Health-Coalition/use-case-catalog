@@ -15,7 +15,7 @@ use_case_category: Administrative & task automation
 area:
   - Access to and linkage with care
   - Communications and community engagement
-stage: Pilot
+stage: "Idea / exploring"
 summary: "Residents can talk instead of type: a realtime voice assistant asks the intake questions, matches services from the catalog, and builds the same service plan as the text chat."
 impact: ""
 review_status: Under review
@@ -111,7 +111,15 @@ The full account, including limits, is in [docs/PRIVACY.md](https://github.com/c
 Built by Austin Public Health IT staff with an AI pair programmer over three days in May 2026, on top of the existing text guide. Because voice reuses the guide's tools and matching, the work was mostly the browser connection, turn-taking and transcript handling. The only running cost is OpenAI Realtime usage, which is billed by the amount of audio. Voice is off unless an API key is configured.
 
 ## Results
-Demonstrated alongside the text guide to the Austin Public Health Commission. It is a pilot demonstration and has not been used with real residents.
+**Status: agency-validated functional prototype (pilot-ready).** Austin Public Health built voice intake on top of the text guide in three days and tested it internally against the same backend tools, matching and plans. It was presented with the text guide to the Austin Public Health Commission. A supervised pilot with residents has not started yet. Voice has the larger privacy gap of the two front doors (see above), so closing that gap comes before any pilot.
+
+## Multi-city white-label readiness
+Voice inherits everything city-specific from the [Austin Service Guide](/catalog/austin-service-guide-ai-assisted-service-navigation/): the service YAML files, branding and rules-based matching. Another city that adapts the guide gets voice in the same step. The voice-specific parts are:
+
+- **Settings:** model, voice and on/off are environment variables (`OPENAI_REALTIME_*`, `DEMO_MODE`). Voice stays off until a key is configured.
+- **Speech provider:** the browser connection is one hook (`frontend/src/hooks/useRealtimeVoiceSession.ts`) plus the backend token endpoint. Moving to another realtime speech provider means rewriting those two pieces. The tools the model calls stay the same.
+
+Container images and cloud deployment templates are not in the repository yet. BCHC's plan for them is in the catalog's [Launchpad architecture roadmap](https://github.com/Big-Cities-Health-Coalition/use-case-catalog/blob/main/docs/bchc/LAUNCHPAD_ARCHITECTURE.md).
 
 ## Lessons learned
 - **Share the tools, not just the prompt.** Pointing the voice model at the same backend functions as the text chat kept eligibility and crisis logic in one tested place.
