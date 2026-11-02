@@ -1,0 +1,49 @@
+{
+  "generated": "2026-11-02",
+  "window": {
+    "from": "2026-01-01",
+    "to": "2026-11-02",
+    "quarters": 4
+  },
+  "totals": {
+    "submissions": 26,
+    "published": 14,
+    "organizations": 2,
+    "entries": 4,
+    "turnaround_days": {
+      "count": 14,
+      "median": 0,
+      "p90": 7
+    }
+  },
+  "quarters": [
+    {
+      "quarter": "2026-Q1",
+      "from": "2026-01-01",
+      "submissions": 0,
+      "published": 0,
+      "organizations": 0
+    },
+    {
+      "quarter": "2026-Q2",
+      "from": "2026-04-01",
+      "submissions": 0,
+      "published": 0,
+      "organizations": 0
+    },
+    {
+      "quarter": "2026-Q3",
+      "from": "2026-07-01",
+      "submissions": 12,
+      "published": 7,
+      "organizations": 0
+    },
+    {
+      "quarter": "2026-Q4",
+      "from": "2026-10-01",
+      "submissions": 14,
+      "published": 7,
+      "organizations": 2
+    }
+  ]
+}
