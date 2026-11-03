@@ -1,0 +1,61 @@
+{
+  "entries": {
+    "austin-health-pulse-life-expectancy-explorer-by-zip-code": {
+      "applicable": true,
+      "archived": false,
+      "errors": [],
+      "exists": true,
+      "fetched": "2026-11-03",
+      "license": "Apache-2.0",
+      "owner_type": "User",
+      "pushed_at": "2026-10-28",
+      "repo": "coa-chrisc/austin-health-pulse",
+      "scorecard": null,
+      "security_policy": false,
+      "url": "https://github.com/coa-chrisc/austin-health-pulse"
+    },
+    "austin-service-guide-ai-assisted-service-navigation": {
+      "applicable": true,
+      "archived": false,
+      "errors": [],
+      "exists": true,
+      "fetched": "2026-11-03",
+      "license": "MIT",
+      "owner_type": "User",
+      "pushed_at": "2026-10-22",
+      "repo": "coa-chrisc/austin-service-guide",
+      "scorecard": null,
+      "security_policy": false,
+      "url": "https://github.com/coa-chrisc/austin-service-guide"
+    },
+    "machine-learning-record-linkage": {
+      "applicable": true,
+      "archived": false,
+      "errors": [],
+      "exists": true,
+      "fetched": "2026-11-03",
+      "license": "GPL-3.0",
+      "owner_type": "Organization",
+      "pushed_at": "2025-08-13",
+      "repo": "PHSKC-APDE/hyrule",
+      "scorecard": null,
+      "security_policy": false,
+      "url": "https://github.com/PHSKC-APDE/hyrule"
+    },
+    "voice-intake-assistant-for-service-navigation": {
+      "applicable": true,
+      "archived": false,
+      "errors": [],
+      "exists": true,
+      "fetched": "2026-11-03",
+      "license": "MIT",
+      "owner_type": "User",
+      "pushed_at": "2026-10-22",
+      "repo": "coa-chrisc/austin-service-guide",
+      "scorecard": null,
+      "security_policy": false,
+      "url": "https://github.com/coa-chrisc/austin-service-guide"
+    }
+  },
+  "generated_at": "2026-11-03"
+}
